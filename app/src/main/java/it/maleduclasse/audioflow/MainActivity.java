@@ -82,6 +82,16 @@ public final class MainActivity extends Activity {
       LinearLayout actions=actionRow();actions.addView(btn("Apri",GREEN,()->setProject(store.project(id))));actions.addView(btn("Rinomina",PANEL,()->askText("Rinomina progetto",MobileStore.str(p,"title"),name->{MobileStore.put(p,"title",name);MobileStore.put(p,"dirty",true);store.saveProject(p);show();})));panel.addView(actions);
       LinearLayout more=actionRow();more.addView(btn("Duplica",PANEL,()->{setProject(store.duplicateProject(p));toast("Progetto duplicato; take escluse dalla copia");}));more.addView(btn("Archivia",BROWN,()->confirm("Archivia progetto?","Nascondo l'episodio sul telefono. Il PC non viene cancellato.","Archivia",()->{store.trashProject(p);if(id.equals(pid()))active=null;show();})));more.addView(btn("Elimina definitivamente",RED,()->confirm("ELIMINAZIONE DEFINITIVA","Cancella questo progetto e tutte le registrazioni locali associate. Se è già sul PC, il progetto PC resta intatto.","Elimina",()->{store.deletePermanently(id);if(id.equals(pid()))active=null;show();})));panel.addView(more);
     }
+    if(!store.archivedProjects().isEmpty()){
+      body.addView(label("Archivio progetti (recuperabili)",17,YELLOW,true));
+      for(JSONObject p:store.archivedProjects()){
+        String id=MobileStore.str(p,"project_id");LinearLayout archived=card(PANEL);
+        archived.addView(label(MobileStore.str(p,"title"),15,TEXT,true));
+        LinearLayout actions=actionRow();actions.addView(btn("Ripristina",GREEN,()->{store.restoreProject(p);show();}));
+        actions.addView(btn("Elimina definitivamente",RED,()->confirm("Cancellazione definitiva?","Questo progetto e tutte le sue registrazioni saranno rimossi SOLO dal telefono.","Elimina",()->{store.deletePermanently(id);show();})));
+        archived.addView(actions);
+      }
+    }
   }
   private void renderScript(){if(active==null){section("Sceneggiatura",PURPLE);note("Apri o crea un progetto prima di scrivere il copione.");return;}
     section("Sceneggiatura · "+MobileStore.str(active,"title"),Color.rgb(95,172,246));
