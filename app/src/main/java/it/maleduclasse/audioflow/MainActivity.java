@@ -4,6 +4,9 @@ import android.Manifest;
 import android.app.*;
 import android.content.*;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -33,13 +36,28 @@ public final class MainActivity extends Activity {
   private LinearLayout root,body;private EditText editor;private String draft="";private boolean editorDirty=false,styling=false;
   private Handler ui=new Handler(Looper.getMainLooper());private Runnable stylingJob;private PopupWindow suggestions;
   private MediaRecorder recorder;private MediaPlayer player;private File recordingFile;private String recordingLine="";private boolean recordingProvisional=false;private boolean syncBusy=false;
-  private AlertDialog takeDialog;private Chronometer recordingClock;
+  private AlertDialog takeDialog;private Chronometer recordingClock;private long lastAutoSync=0L;
 
   @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
     store=new MobileStore(this);sync=new MobileSync(this,store);cast=store.cast();
     String pid=getPreferences(0).getString("current_project","");active=store.project(pid);
     if(MobileStore.str(active,"project_id").isEmpty()){List<JSONObject> ps=store.projects();active=ps.isEmpty()?null:ps.get(0);}
     show();
+  }
+  @Override protected void onResume(){super.onResume();ui.postDelayed(this::autoSync,1100);}
+  private boolean wifiConnected(){
+    ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
+    if(cm==null)return false;Network network=cm.getActiveNetwork();if(network==null)return false;
+    NetworkCapabilities cap=cm.getNetworkCapabilities(network);
+    return cap!=null&&cap.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
+  }
+  private void autoSync(){
+    long now=SystemClock.elapsedRealtime();
+    if(sync==null||sync.url().isEmpty()||syncBusy||!wifiConnected()||(lastAutoSync>0&&now-lastAutoSync<60000))return;
+    lastAutoSync=now;syncBusy=true;
+    background(()->{try{MobileSync.Result result=sync.synchronizeAll();runOnUiThread(()->{syncBusy=false;lastSync="Automatico: "+result.message();if(page.equals("Sincronizza"))show();});}
+      catch(Exception ex){syncBusy=false;lastSync="PC non raggiungibile: "+ex.getMessage();}
+    });
   }
   private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
   private LinearLayout column(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);return l;}
@@ -179,7 +197,7 @@ public final class MainActivity extends Activity {
   }
   private void stopRecord(){if(recorder==null){toast("Nessuna registrazione attiva");return;}boolean saved=false;try{recorder.stop();saved=recordingFile!=null&&recordingFile.length()>0;}catch(Exception ex){toast("Errore durante lo Stop: "+ex.getMessage());}finally{recorder.release();recorder=null;}
     if(saved){if(recordingProvisional)store.setProvisional(pid(),recordingLine,recordingFile.getName(),true);toast("Take salvata immediatamente sul telefono");}else if(recordingFile!=null)recordingFile.delete();
-    if(recordingClock!=null)recordingClock.stop();JSONObject line=MobileStore.byId(active.optJSONArray("lines"),recordingLine);recordingLine="";if(line!=null)showTakeDialog(line);
+    if(recordingClock!=null)recordingClock.stop();JSONObject line=MobileStore.byId(active.optJSONArray("lines"),recordingLine);recordingLine="";if(line!=null)showTakeDialog(line);if(saved)ui.postDelayed(this::autoSync,700);
   }
   private void play(File audio){if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}try{player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());player.prepare();player.start();player.setOnCompletionListener(p->{p.release();player=null;});}catch(Exception ex){toast("Impossibile riprodurre: "+ex.getMessage());}}
   private void renderSync(){section("Sincronizzazione con Windows",YELLOW);note("Il telefono è l'origine di progetti, sceneggiature, cast e take. La timeline si crea automaticamente sul PC dopo il trasferimento.");
@@ -187,7 +205,7 @@ public final class MainActivity extends Activity {
     addButton(body,"⇅ Invia tutti i progetti e le registrazioni",GREEN,this::syncAll);
     addButton(body,"↓ Importa un progetto già esistente sul PC",PANEL,this::chooseDesktopProject);
     note("Indirizzo: "+(sync.url().isEmpty()?"PC non configurato":sync.url()));note("Ultimo risultato: "+lastSync);
-    note("Funziona senza Internet mentre registri. Per sincronizzare è necessario che PC e telefono siano sulla stessa rete Wi-Fi privata e che sul PC sia avviato AVVIA_PC_ANDROID.bat. La connessione LAN usa HTTP: non utilizzare Wi-Fi pubbliche e non aprire la porta verso Internet.");
+    note("Registri offline anche con PC spento. Quando riapri l’app sulla stessa Wi-Fi privata del PC, tenta automaticamente il trasferimento. Il pulsante manuale resta disponibile. Sul PC avvia AVVIA_PC_ANDROID.bat. Non usare reti pubbliche né aprire la porta verso Internet: HTTP LAN non è cifrato.");
     addButton(body,"Genera la timeline sul PC",PURPLE,()->requireProject(()->background(()->{try{sync.post("/api/sync/projects/"+pid()+"/assemble",MobileStore.obj());runOnUiThread(()->toast("Bozza timeline generata sul PC"));}catch(Exception e){error(e);}})));
   }
   private void pairDialog(){LinearLayout l=column();pad(l);EditText url=new EditText(this);url.setHint("http://192.168.1.2:18766");url.setText(sync.url());l.addView(url);EditText key=new EditText(this);key.setHint("Codice di abbinamento PC");key.setText(sync.token());l.addView(key);
