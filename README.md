@@ -1,13 +1,26 @@
-# Maleduclasse Audio Flow — Android Sync
+# Maleduclasse Audio Flow — Android v0.4 Mobile First
 
-App Android nativa di registrazione battute, con sincronizzazione LAN verso Maleduclasse Audio Flow per Windows.
+L'app Android è il punto di partenza per creare **progetti, copioni, cast e take**. Il PC importa queste informazioni, assembla la timeline e gestisce suoni e mix.
 
-## Compilazione APK
-Il workflow [Build Android APK](.github/workflows/android-apk.yml) crea una build debug installabile su Android 8.0+.
-Apri **Actions → Build Android APK → run**, poi scarica l'artefatto **Maleduclasse-Android-APK**.
+## Funzioni Android
 
-## Collegamento al PC
-Sul computer usa il pacchetto Windows v0.3.0 SYNC e avvia `AVVIA_PC_ANDROID.bat`. Telefono e PC devono essere sulla stessa Wi-Fi privata. Imposta sull'app l'indirizzo del PC (`http://192.168.x.x:18766`) e il codice di abbinamento mostrato sul PC. L'endpoint di sincronizzazione impiega HTTP in LAN: **non aprire la porta 18766 verso Internet**.
+- Progetti: nuovo, apri, rinomina, duplica, archivia, elimina localmente.
+- Sceneggiatura: editor con sintassi `@Personaggio`, `/scena`, tag, controllo battute, importazione DOCX e dettatura.
+- Cast: doppiatori, personaggi, assegnazioni globali e per episodio.
+- Doppiaggio: filtro doppiatore, registrazione offline, più take, import audio, ascolto, preferita/provvisoria/eliminazione.
+- Sincronizzazione bidirezionale LAN: importa da PC oppure crea su telefono e invia al PC con ID stabili. Il PC crea la bozza dopo le take.
+- Protezione da conflitti sulle revisioni; le take precedenti sono archiviate quando il testo cambia.
 
-## Stato
-Questa è una build **di prova**. La compilazione automatica e il collaudo su dispositivi Android effettivi sono due controlli distinti. Le registrazioni sono conservate sul telefono finché il trasferimento non è confermato dal PC.
+## APK
+
+GitHub Actions → **Build Maleduclasse Android APK** → artefatto `Maleduclasse_Audio_Flow_Android_debug_APK`.
+Compatibilità: Android 8.0+.
+Questa è una build **debug da collaudare su dispositivo reale**, non una release definitiva firmata per Google Play.
+
+## Windows
+
+Usare il pacchetto Windows **v0.4 Mobile First**, con `mobile_first_api.py`. Avviare `AVVIA_PC_ANDROID.bat`. Smartphone e PC sulla **stessa Wi-Fi privata**.
+
+L'app deve connettersi a `http://IP_DEL_PC:18766` con il codice mostrato dal PC. Il servizio usa HTTP LAN, non cifrato: non aprire la porta verso Internet e non usarlo su reti pubbliche.
+
+Progetti, testo e take restano disponibili offline sul telefono. In caso di conflitto di revisione, la sincronizzazione non sovrascrive il lavoro del PC.
