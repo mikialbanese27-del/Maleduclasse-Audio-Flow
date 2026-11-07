@@ -47,6 +47,8 @@ final class MobileStore {
   void saveCast(JSONObject value){write(new File(base,"cast.json"),value);markAllDirty();}
   void markAllDirty(){for(JSONObject project:projects()){put(project,"dirty",true);saveProject(project);}}
   List<JSONObject> projects(){ArrayList<JSONObject> result=new ArrayList<>();File[] dirs=base.listFiles(File::isDirectory);if(dirs!=null)for(File d:dirs){JSONObject p=read(new File(d,"project.json"));if(!str(p,"project_id").isEmpty()&&!p.optBoolean("deleted",false))result.add(p);}result.sort((a,b)->Long.compare(b.optLong("edited",0),a.optLong("edited",0)));return result;}
+  List<JSONObject> archivedProjects(){ArrayList<JSONObject> result=new ArrayList<>();File[] dirs=base.listFiles(File::isDirectory);if(dirs!=null)for(File d:dirs){JSONObject p=read(new File(d,"project.json"));if(!str(p,"project_id").isEmpty()&&p.optBoolean("deleted",false))result.add(p);}result.sort((a,b)->Long.compare(b.optLong("edited",0),a.optLong("edited",0)));return result;}
+  void restoreProject(JSONObject project){put(project,"deleted",false);saveProject(project);}
   JSONObject project(String pid){return read(new File(projectDir(pid),"project.json"));}
   void saveProject(JSONObject p){String pid=str(p,"project_id");if(!pid.matches("[a-f0-9]{16}"))throw new IllegalArgumentException("ID progetto non valido");put(p,"edited",System.currentTimeMillis());write(new File(projectDir(pid),"project.json"),p);}
   JSONObject createProject(String title){JSONObject p=obj();put(p,"project_id",id());put(p,"title",title.trim());put(p,"script","");put(p,"revision",0);put(p,"dirty",true);put(p,"lines",array());put(p,"overrides",array());saveProject(p);return p;}
