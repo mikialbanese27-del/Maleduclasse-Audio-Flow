@@ -67,7 +67,8 @@ public final class MainActivity extends Activity {
   }
   private void autoSync(){
     long now=SystemClock.elapsedRealtime();
-    if(sync==null||sync.url().isEmpty()||syncBusy||recorder!=null||recordingPending||editorDirty||!wifiConnected()||
+    if(!wifiConnected()){pcOnline=false;updateConnectionDot();return;}
+    if(sync==null||sync.url().isEmpty()||syncBusy||recorder!=null||recordingPending||editorDirty||
        (lastAutoSync>0&&now-lastAutoSync<11000))return;
     lastAutoSync=now;syncBusy=true;
     background(()->{
@@ -431,6 +432,7 @@ public final class MainActivity extends Activity {
   }
   private void sendTimelineToPc(){
     if(active==null)return;
+    if(recordingPending||recorder!=null){toast("Completa prima la registrazione");return;}
     if(syncBusy){toast("Sincronizzazione già in corso");return;}
     syncBusy=true;
     background(()->{
@@ -679,6 +681,9 @@ public final class MainActivity extends Activity {
     reviewDialog=new AlertDialog.Builder(this).setView(pane).create();
     reviewDialog.setCancelable(false);reviewDialog.show();
     reviewDialog.getWindow().setBackgroundDrawableResource(android.R.color.black);
+    reviewDialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+    WindowManager.LayoutParams window=reviewDialog.getWindow().getAttributes();
+    window.dimAmount=1.0f;reviewDialog.getWindow().setAttributes(window);
     reviewDialog.getWindow().setLayout(-1,-2);
   }
   private void play(File audio){if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}try{player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());player.prepare();player.start();player.setOnCompletionListener(p->{p.release();player=null;});}catch(Exception ex){toast("Impossibile riprodurre: "+ex.getMessage());}}
