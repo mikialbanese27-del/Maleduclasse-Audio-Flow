@@ -44,7 +44,7 @@ final class MobileStore {
   File takeDir(String pid,String lid){File dir=new File(context.getFilesDir(),"takes/"+pid+"/"+lid);dir.mkdirs();return dir;}
   File[] takes(String pid,String lid){File[] arr=takeDir(pid,lid).listFiles((dir,name)->{String s=name.toLowerCase(Locale.ROOT);return s.endsWith(".m4a")||s.endsWith(".wav")||s.endsWith(".mp3")||s.endsWith(".aac")||s.endsWith(".ogg")||s.endsWith(".flac");});if(arr==null)return new File[0];Arrays.sort(arr,Comparator.comparing(File::getName));return arr;}
   JSONObject cast(){JSONObject cast=read(new File(base,"cast.json"));if(!cast.has("actors"))put(cast,"actors",array());if(!cast.has("characters"))put(cast,"characters",array());return cast;}
-  void saveCast(JSONObject value){write(new File(base,"cast.json"),value);markAllDirty();}
+  void saveCast(JSONObject value){write(new File(base,"cast.json"),value);/* cast syncs separately from episode revisions */}
   void applyRemoteCast(JSONObject value){write(new File(base,"cast.json"),value);}
   void markAllDirty(){for(JSONObject project:projects()){put(project,"dirty",true);saveProject(project);}}
   List<JSONObject> projects(){ArrayList<JSONObject> result=new ArrayList<>();File[] dirs=base.listFiles(File::isDirectory);if(dirs!=null)for(File d:dirs){JSONObject p=read(new File(d,"project.json"));if(!str(p,"project_id").isEmpty()&&!p.optBoolean("deleted",false))result.add(p);}result.sort((a,b)->Long.compare(b.optLong("edited",0),a.optLong("edited",0)));return result;}
