@@ -154,31 +154,70 @@ public final class MainActivity extends Activity {
   private void confirm(String title,String message,String action,Runnable run){new AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton(action,(d,w)->run.run()).setNegativeButton("Annulla",null).show();}
   private LinearLayout card(int background){LinearLayout l=column();l.setBackground(box(background,12,Color.rgb(59,48,73),1));pad(l);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.setMargins(0,0,0,dp(9));body.addView(l,params);return l;}
   private LinearLayout actionRow(){LinearLayout l=row();l.setPadding(0,dp(3),0,dp(3));return l;}
-  private void renderProjects(){section("Progetti · tutto inizia dal telefono",PURPLE);note("Crea e modifica gli episodi anche senza Internet. Le registrazioni restano sul telefono finché il PC non le riceve.");
-    addButton(body,"＋ Nuovo progetto",PURPLE,()->askText("Titolo nuovo episodio","",name->{setProject(store.createProject(name));}));
-    for(JSONObject p:store.projects()){String id=MobileStore.str(p,"project_id");LinearLayout panel=card(PANEL);panel.addView(label(MobileStore.str(p,"title"),18,TEXT,true));
-      JSONArray lines=p.optJSONArray("lines");panel.addView(label((lines==null?0:lines.length())+" battute  ·  "+(p.optBoolean("dirty",false)?"Da sincronizzare":"Allineato al PC"),12,YELLOW,false));
-      LinearLayout actions=actionRow();actions.addView(btn("Apri",GREEN,()->setProject(store.project(id))));actions.addView(btn("Rinomina",PANEL,()->askText("Rinomina progetto",MobileStore.str(p,"title"),name->{MobileStore.put(p,"title",name);MobileStore.put(p,"dirty",true);store.saveProject(p);show();})));panel.addView(actions);
-      LinearLayout more=actionRow();more.addView(btn("Duplica",PANEL,()->{setProject(store.duplicateProject(p));toast("Progetto duplicato; take escluse dalla copia");}));more.addView(btn("Archivia",BROWN,()->confirm("Archivia progetto?","Nascondo l'episodio sul telefono. Il PC non viene cancellato.","Archivia",()->{store.trashProject(p);if(id.equals(pid()))active=null;show();})));more.addView(btn("Elimina definitivamente",RED,()->confirm("ELIMINAZIONE DEFINITIVA","Cancella questo progetto e tutte le registrazioni locali associate. Se è già sul PC, il progetto PC resta intatto.","Elimina",()->{store.deletePermanently(id);if(id.equals(pid()))active=null;show();})));panel.addView(more);
+  private void projectActions(View anchor,JSONObject p){
+    String id=MobileStore.str(p,"project_id");PopupMenu menu=new PopupMenu(this,anchor);
+    menu.getMenu().add("Rinomina").setOnMenuItemClickListener(item->{
+      askText("Rinomina episodio",MobileStore.str(p,"title"),name->{
+        MobileStore.put(p,"title",name);MobileStore.put(p,"dirty",true);store.saveProject(p);show();
+      });return true;
+    });
+    menu.getMenu().add("Duplica").setOnMenuItemClickListener(item->{
+      setProject(store.duplicateProject(p));toast("Copia creata senza duplicare le registrazioni");return true;
+    });
+    menu.getMenu().add("Archivia").setOnMenuItemClickListener(item->{
+      confirm("Archivia episodio?","L'episodio viene nascosto solo su Android.","Archivia",()->{
+        store.trashProject(p);if(id.equals(pid()))active=null;show();
+      });return true;
+    });
+    menu.getMenu().add("Elimina definitivamente").setOnMenuItemClickListener(item->{
+      confirm("Eliminazione definitiva","Elimina il progetto e le take SOLO su questo dispositivo. Il PC non viene modificato.","Elimina",()->{
+        store.deletePermanently(id);if(id.equals(pid()))active=null;show();
+      });return true;
+    });
+    menu.show();
+  }
+  private void renderProjects(){
+    section("I tuoi episodi",TEXT);
+    addButton(body,"＋ Nuovo episodio",PURPLE,()->askText("Titolo del nuovo episodio","",name->setProject(store.createProject(name))));
+    for(JSONObject p:store.projects()){
+      String id=MobileStore.str(p,"project_id");
+      LinearLayout panel=card(Color.rgb(33,29,44));panel.setPadding(dp(16),dp(14),dp(12),dp(14));
+      LinearLayout row=row();
+      LinearLayout summary=column();
+      summary.addView(label(MobileStore.str(p,"title"),18,TEXT,true));
+      JSONArray lines=p.optJSONArray("lines");
+      String status=p.optBoolean("dirty",false)?"Da sincronizzare":"Sul dispositivo";
+      summary.addView(label((lines==null?0:lines.length())+" battute  ·  "+status,12,Color.rgb(168,162,181),false));
+      row.addView(summary,new LinearLayout.LayoutParams(0,-2,1));
+      Button more=btn("⋮",PANEL,()->{});more.setTextSize(23);
+      more.setOnClickListener(v->projectActions(v,p));row.addView(more);
+      panel.addView(row);panel.setOnClickListener(v->setProject(store.project(id)));
     }
     if(!store.archivedProjects().isEmpty()){
-      body.addView(label("Archivio progetti (recuperabili)",17,YELLOW,true));
+      body.addView(label("Archivio",16,Color.rgb(175,164,188),true));
       for(JSONObject p:store.archivedProjects()){
-        String id=MobileStore.str(p,"project_id");LinearLayout archived=card(PANEL);
-        archived.addView(label(MobileStore.str(p,"title"),15,TEXT,true));
-        LinearLayout actions=actionRow();actions.addView(btn("Ripristina",GREEN,()->{store.restoreProject(p);show();}));
-        actions.addView(btn("Elimina definitivamente",RED,()->confirm("Cancellazione definitiva?","Questo progetto e tutte le sue registrazioni saranno rimossi SOLO dal telefono.","Elimina",()->{store.deletePermanently(id);show();})));
-        archived.addView(actions);
+        String id=MobileStore.str(p,"project_id");
+        LinearLayout cell=card(PANEL);LinearLayout horizontal=row();
+        horizontal.addView(label(MobileStore.str(p,"title"),15,TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
+        Button more=btn("⋮",PANEL,()->{});more.setTextSize(22);
+        more.setOnClickListener(v->{
+          PopupMenu menu=new PopupMenu(this,v);
+          menu.getMenu().add("Ripristina").setOnMenuItemClickListener(item->{store.restoreProject(p);show();return true;});
+          menu.getMenu().add("Elimina definitivamente").setOnMenuItemClickListener(item->{
+            confirm("Eliminare definitivamente?","Questo progetto e le take locali verranno rimossi.","Elimina",()->{store.deletePermanently(id);show();});
+            return true;
+          });menu.show();
+        });horizontal.addView(more);cell.addView(horizontal);
       }
     }
   }
   private void renderScript(){if(active==null){section("Sceneggiatura",PURPLE);note("Apri o crea un progetto prima di scrivere il copione.");return;}
     section("Sceneggiatura · "+MobileStore.str(active,"title"),Color.rgb(95,172,246));
-    note("@Personaggio  ·  /scena Titolo  ·  /azione Testo  ·  /pausa 1.5  ·  /sfx Tag  ·  /ambiente Tag  ·  /musica Tag");
+
     editor=new EditText(this);editor.setTextColor(TEXT);editor.setHintTextColor(Color.GRAY);editor.setHint("/scena Scena 1\n@Personaggio\nScrivi qui la battuta...");editor.setTextSize(17);
     editor.setGravity(Gravity.TOP);editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
-    editor.setTypeface(Typeface.MONOSPACE);editor.setPadding(dp(14),dp(14),dp(14),dp(14));editor.setBackground(box(Color.rgb(25,31,49),10,PURPLE,1));editor.setMinLines(16);
-    draft=MobileStore.str(active,"script");editor.setText(draft);editor.setSelection(editor.length());body.addView(editor,new LinearLayout.LayoutParams(-1,dp(435)));applySyntax();
+    editor.setTypeface(Typeface.MONOSPACE);editor.setPadding(dp(14),dp(14),dp(14),dp(14));editor.setBackground(box(Color.rgb(25,31,49),10,PURPLE,1));editor.setMinLines(14);editor.setMinimumHeight(dp(350));
+    draft=MobileStore.str(active,"script");editor.setText(draft);editor.setSelection(editor.length());body.addView(editor,new LinearLayout.LayoutParams(-1,-2));applySyntax();
     editor.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){if(!styling)editorDirty=!s.toString().equals(MobileStore.str(active,"script"));}
       public void afterTextChanged(Editable e){if(styling)return;if(stylingJob!=null)ui.removeCallbacks(stylingJob);stylingJob=()->{applySyntax();characterSuggestions();};ui.postDelayed(stylingJob,190);}});
     LinearLayout actions=actionRow();actions.addView(btn("Salva copione",GREEN,()->{if(saveEditor())toast("Copione salvato sul telefono");}));actions.addView(btn("@ Personaggio",PURPLE,this::chooseCharacterInsert));actions.addView(btn("Dettatura",PANEL,this::dictate));body.addView(actions);
