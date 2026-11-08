@@ -47,6 +47,7 @@ public final class MainActivity extends Activity {
   private MediaRecorder recorder;private MediaPlayer player;private File recordingFile;private String recordingLine="";private boolean recordingProvisional=false;private boolean syncBusy=false;
   private AlertDialog takeDialog;private Chronometer recordingClock;private long lastAutoSync=0L;
   private Button recorderButton;private String selectedTakeName="";
+  private Button activePlayButton;private File activePlayFile;
   private Button dictationButton;private android.speech.SpeechRecognizer speechRecognizer;
   private boolean dictationActive=false;
 
@@ -830,7 +831,35 @@ public final class MainActivity extends Activity {
     window.dimAmount=1.0f;reviewDialog.getWindow().setAttributes(window);
     reviewDialog.getWindow().setLayout(-1,-2);
   }
-  private void play(File audio){if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}try{player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());player.prepare();player.start();player.setOnCompletionListener(p->{p.release();player=null;});}catch(Exception ex){toast("Impossibile riprodurre: "+ex.getMessage());}}
+  private void resetPlayerButton(){
+    if(activePlayButton!=null){
+      activePlayButton.setText("▶");
+      activePlayButton.setContentDescription("Riproduci take");
+    }
+  }
+  private void playTake(File file,Button button){
+    if(file.equals(activePlayFile)&&player!=null){
+      try{
+        if(player.isPlaying()){player.pause();button.setText("▶");button.setContentDescription("Riprendi take");}
+        else{player.start();button.setText("Ⅱ");button.setContentDescription("Metti in pausa");}
+      }catch(Exception ex){toast("Riproduzione: "+ex.getMessage());}
+      return;
+    }
+    resetPlayerButton();activePlayButton=button;
+    play(file);
+    if(player!=null){activePlayFile=file;button.setText("Ⅱ");button.setContentDescription("Metti in pausa");}
+  }
+  private void play(File audio){
+    if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}
+    resetPlayerButton();activePlayFile=null;
+    try{
+      player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());
+      player.prepare();player.start();
+      player.setOnCompletionListener(p->{
+        p.release();player=null;activePlayFile=null;resetPlayerButton();
+      });
+    }catch(Exception ex){player=null;toast("Impossibile riprodurre: "+ex.getMessage());}
+  }
   private void renderSync(){section("Sincronizzazione con Windows",YELLOW);note("La Wi-Fi privata sincronizza copioni, cast e take tra telefono e PC. Le modifiche offline restano locali finché non viene stabilita la connessione.");
     addButton(body,"⚙ Collega PC / codice",PURPLE,this::pairDialog);
     addButton(body,"✓ Verifica collegamento reale al PC",GREEN,()->background(()->{
