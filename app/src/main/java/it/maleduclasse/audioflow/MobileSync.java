@@ -40,6 +40,74 @@ final class MobileSync {
     String message(){return projects+" progetti inviati, "+takes+" take inviate, "+receivedProjects+" progetti ricevuti, "+receivedTakes+" take ricevute";}}
 
   /** Pull changes only into clean local projects. Dirty drafts are never overwritten. */
+  /** Shared cast uses a dedicated optimistic version, never a whole-project overwrite. */
+  private static String castSignature(JSONObject cast){
+    ArrayList<String> pieces=new ArrayList<>();
+    for(String kind:new String[]{"actors","characters"}){
+      JSONArray arr=cast.optJSONArray(kind);if(arr==null)continue;
+      for(int i=0;i<arr.length();i++){
+        JSONObject el=arr.optJSONObject(i);if(el==null)continue;
+        pieces.add(kind+"|"+el.optString("id")+"|"+el.optString("name")+"|"+el.optString("actor_id"));
+      }
+    }
+    Collections.sort(pieces);return pieces.toString();
+  }
+  private static boolean castEmpty(JSONObject cast){
+    JSONArray a=cast.optJSONArray("actors"),c=cast.optJSONArray("characters");
+    return (a==null||a.length()==0)&&(c==null||c.length()==0);
+  }
+  private JSONObject castFromState(JSONObject state){
+    JSONObject result=MobileStore.obj();
+    MobileStore.put(result,"actors",state.optJSONArray("actors")==null?MobileStore.array():state.optJSONArray("actors"));
+    MobileStore.put(result,"characters",state.optJSONArray("characters")==null?MobileStore.array():state.optJSONArray("characters"));
+    return result;
+  }
+  private String synchronizeCast()throws Exception{
+    JSONObject state=state();String remoteHash=state.optString("cast_hash","");
+    if(!remoteHash.matches("[0-9a-f]{64}"))throw new IOException("Versione Windows non compatibile con il cast condiviso");
+    JSONObject local=store.cast(),remote=castFromState(state);
+    String localSig=castSignature(local),remoteSig=castSignature(remote);
+    String baseSig=prefs.getString("cast_last_synced","");
+    String baseHash=prefs.getString("cast_last_remote_hash","");
+    if(localSig.equals(remoteSig)){
+      prefs.edit().putString("cast_last_synced",remoteSig).putString("cast_last_remote_hash",remoteHash).apply();
+      return remoteHash;
+    }
+    if(baseSig.isEmpty()){
+      if(castEmpty(local)){store.applyRemoteCast(remote);
+        prefs.edit().putString("cast_last_synced",remoteSig).putString("cast_last_remote_hash",remoteHash).apply();
+        return remoteHash;
+      }
+      if(!castEmpty(remote))throw new IOException("CAST IN CONFLITTO: PC e telefono hanno già cast differenti. Non sovrascrivo nessuno dei due.");
+      baseSig=remoteSig;baseHash=remoteHash;
+    }
+    boolean localChanged=!localSig.equals(baseSig),remoteChanged=!remoteSig.equals(baseSig);
+    if(localChanged&&remoteChanged)throw new IOException("CAST IN CONFLITTO: modifiche su entrambi i dispositivi. Nessun dato cancellato.");
+    if(remoteChanged){
+      store.applyRemoteCast(remote);
+      prefs.edit().putString("cast_last_synced",remoteSig).putString("cast_last_remote_hash",remoteHash).apply();
+      return remoteHash;
+    }
+    if(localChanged){
+      JSONObject body=MobileStore.obj();
+      MobileStore.put(body,"base_hash",remoteHash);
+      MobileStore.put(body,"actors",local.optJSONArray("actors")==null?MobileStore.array():local.optJSONArray("actors"));
+      MobileStore.put(body,"characters",local.optJSONArray("characters")==null?MobileStore.array():local.optJSONArray("characters"));
+      JSONObject result=put("/api/sync/cast",body);
+      String updated=result.optString("cast_hash","");
+      prefs.edit().putString("cast_last_synced",localSig).putString("cast_last_remote_hash",updated).apply();
+      return updated;
+    }
+    return remoteHash;
+  }
+  JSONObject put(String path,JSONObject payload)throws Exception{
+    HttpURLConnection con=connect(path,"PUT");
+    try{
+      con.setDoOutput(true);con.setRequestProperty("Content-Type","application/json; charset=utf-8");
+      try(OutputStream out=con.getOutputStream()){out.write(payload.toString().getBytes(StandardCharsets.UTF_8));}
+      return response(con);
+    }finally{con.disconnect();}
+  }
   private int pullProjects()throws Exception{
     JSONObject remote=state();JSONArray list=remote.optJSONArray("projects");
     if(list==null)return 0;
@@ -56,13 +124,6 @@ final class MobileSync {
       if(localId.isEmpty()||r.optInt("revision",0)>local.optInt("revision",-1)||!r.optString("updated","").equals(local.optString("updated",""))){
         store.importFromPC(download(id));changed++;
       }
-    }
-    JSONObject remoteCast=MobileStore.obj();
-    MobileStore.put(remoteCast,"actors",remote.optJSONArray("actors")==null?MobileStore.array():remote.optJSONArray("actors"));
-    MobileStore.put(remoteCast,"characters",remote.optJSONArray("characters")==null?MobileStore.array():remote.optJSONArray("characters"));
-    JSONObject localCast=store.cast();
-    if(!normalizedCast(remoteCast).equals(normalizedCast(localCast))){
-      store.applyRemoteCast(remoteCast);changed++;
     }
     return changed;
   }
@@ -119,10 +180,12 @@ final class MobileSync {
   }
   Result synchronizeAll()throws Exception{
     Result result=new Result();
+    String currentCastHash=synchronizeCast();
     for(JSONObject project:store.projects()){
       String pid=MobileStore.str(project,"project_id");
       if(project.optBoolean("dirty",false)){
         JSONObject payload=MobileStore.obj();MobileStore.put(payload,"project_id",pid);MobileStore.put(payload,"title",MobileStore.str(project,"title"));MobileStore.put(payload,"script",MobileStore.str(project,"script"));MobileStore.put(payload,"base_revision",project.optInt("revision",0));
+        MobileStore.put(payload,"cast_hash",currentCastHash);
         String baseUpdated=project.optString("updated","");
         if(!baseUpdated.isEmpty())MobileStore.put(payload,"base_updated",baseUpdated);
         JSONObject cast=store.cast();MobileStore.put(payload,"actors",cast.optJSONArray("actors"));MobileStore.put(payload,"characters",cast.optJSONArray("characters"));
@@ -164,6 +227,9 @@ final class MobileSync {
       }
     }
     result.receivedProjects=pullProjects();
+    String previousCastHash=currentCastHash;
+    currentCastHash=synchronizeCast();
+    if(!previousCastHash.equals(currentCastHash))result.receivedProjects++;
     result.receivedTakes=pullTakes();
     return result;
   }
