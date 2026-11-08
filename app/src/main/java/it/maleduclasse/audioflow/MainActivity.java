@@ -33,6 +33,14 @@ public final class MainActivity extends Activity {
   private MobileStore store;private MobileSync sync;
   private JSONObject active;private JSONObject cast;
   private String page="Progetti",selectedLine="",actorFilter="Tutti",lastSync="Non sincronizzato";
+  private String filterMode="Doppiatore";private boolean pcOnline=false;private TextView connectionDot;
+  private boolean recordingPending=false;private AlertDialog reviewDialog;
+  private ArrayList<Integer> capturedPeaks=new ArrayList<>();private final Runnable sampleAmplitude=new Runnable(){
+    @Override public void run(){if(recorder==null)return;
+      try{capturedPeaks.add(Math.max(2,recorder.getMaxAmplitude()));}catch(Exception ignored){}
+      ui.postDelayed(this,110);
+    }
+  };
   private LinearLayout root,body;private EditText editor;private String draft="";private boolean editorDirty=false,styling=false;
   private Handler ui=new Handler(Looper.getMainLooper());private Runnable stylingJob;private PopupWindow suggestions;
   private MediaRecorder recorder;private MediaPlayer player;private File recordingFile;private String recordingLine="";private boolean recordingProvisional=false;private boolean syncBusy=false;
@@ -65,7 +73,7 @@ public final class MainActivity extends Activity {
       try{
         MobileSync.Result result=sync.synchronizeAll();
         runOnUiThread(()->{
-          syncBusy=false;lastSync="Automatico: "+result.message();
+          syncBusy=false;pcOnline=true;updateConnectionDot();lastSync="Automatico: "+result.message();
           if(result.receivedProjects>0||result.receivedTakes>0){
             cast=store.cast();
             if(active!=null)active=store.project(pid());
@@ -77,7 +85,7 @@ public final class MainActivity extends Activity {
           }else if(page.equals("Sincronizza"))show();
         });
       }catch(Exception ex){
-        runOnUiThread(()->{syncBusy=false;lastSync="PC non raggiungibile o conflitto: "+ex.getMessage();});
+        runOnUiThread(()->{syncBusy=false;pcOnline=false;updateConnectionDot();lastSync="PC non raggiungibile o conflitto: "+ex.getMessage();});
       }
     });
   }
@@ -94,19 +102,49 @@ public final class MainActivity extends Activity {
   private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
   private String pid(){return active==null?"":MobileStore.str(active,"project_id");}
   private void setProject(JSONObject p){active=p;selectedLine="";if(p!=null)getPreferences(0).edit().putString("current_project",pid()).apply();page="Sceneggiatura";show();}
+  private void updateConnectionDot(){
+    if(connectionDot!=null)connectionDot.setTextColor(pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102));
+  }
+  private void showSettingsMenu(View anchor){
+    PopupMenu menu=new PopupMenu(this,anchor);
+    menu.getMenu().add("Cast e personaggi").setOnMenuItemClickListener(item->{openPage("⚙ Cast");return true;});
+    menu.getMenu().add("Sincronizzazione Windows").setOnMenuItemClickListener(item->{openPage("Sincronizza");return true;});
+    menu.show();
+  }
+  private Button navButton(String glyph,String title,String destination){
+    Button b=btn(glyph+"\n"+title,page.equals(destination)?Color.rgb(78,59,107):BG,()->openPage(destination));
+    b.setTextSize(11);b.setMinHeight(0);b.setPadding(dp(3),dp(4),dp(3),dp(4));return b;
+  }
   private void show(){
     dismissSuggestions();editor=null;editorDirty=false;
     root=column();root.setBackgroundColor(BG);setContentView(root);
-    LinearLayout header=row();header.setPadding(dp(8),dp(6),dp(8),dp(3));header.setBackgroundColor(Color.rgb(28,23,39));
-    TextView title=label("MALEDUCLASSE  AUDIO FLOW",18,PURPLE,true);header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-    Button synch=btn("⇅",PANEL,()->openPage("Sincronizza"));header.addView(synch);root.addView(header);
-    TextView projectLabel=label(active==null?"Nessun progetto · Crea il tuo primo episodio":MobileStore.str(active,"title")+(active.optBoolean("dirty",false)?"  • modifiche offline":""),13,YELLOW,false);root.addView(projectLabel);
-    HorizontalScrollView navScroll=new HorizontalScrollView(this);navScroll.setHorizontalScrollBarEnabled(false);
-    LinearLayout nav=row();String[] tabs={"Progetti","Sceneggiatura","Doppiaggio","⚙ Cast","Sincronizza"};
-    for(String tab:tabs){Button b=btn(tab,tab.equals(page)?PURPLE:PANEL,()->openPage(tab));nav.addView(b,new LinearLayout.LayoutParams(-2,dp(45)));}navScroll.addView(nav);root.addView(navScroll);
+    LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
+    header.setPadding(dp(12),dp(5),dp(10),dp(5));header.setBackgroundColor(Color.rgb(26,23,36));
+    TextView brand=label("◉",30,PURPLE,true);brand.setGravity(Gravity.CENTER);
+    header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
+    header.addView(brand,new LinearLayout.LayoutParams(dp(50),dp(51)));
+    header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
+    connectionDot=label("●",22,pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102),true);
+    connectionDot.setContentDescription(pcOnline?"PC collegato":"PC non collegato");
+    header.addView(connectionDot);Button settings=btn("⚙",PANEL,()->showSettingsMenu(connectionDot));
+    settings.setTextSize(23);header.addView(settings);root.addView(header);
+    TextView projectLabel=label(active==null?"Scegli un episodio":MobileStore.str(active,"title"),13,Color.rgb(186,176,203),false);
+    projectLabel.setMaxLines(1);root.addView(projectLabel);
     if(page.equals("Sceneggiatura")&&active!=null)addScriptPresetToolbar();
-    ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));body=column();body.setPadding(dp(10),dp(10),dp(10),dp(36));scroll.addView(body);
-    switch(page){case "Progetti":renderProjects();break;case "Sceneggiatura":renderScript();break;case "Doppiaggio":renderDubbing();break;case "⚙ Cast":renderCast();break;default:renderSync();}
+    ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);
+    scroll.setVerticalScrollBarEnabled(false);
+    root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+    body=column();body.setPadding(dp(12),dp(6),dp(12),dp(20));scroll.addView(body);
+    switch(page){case "Progetti":renderProjects();break;case "Sceneggiatura":renderScript();break;
+      case "Doppiaggio":renderDubbing();break;case "⚙ Cast":renderCast();break;default:renderSync();}
+    if(!page.equals("Sceneggiatura")){
+      LinearLayout bottom=row();bottom.setGravity(Gravity.CENTER);
+      bottom.setPadding(dp(6),dp(5),dp(6),dp(7));bottom.setBackgroundColor(Color.rgb(26,23,36));
+      bottom.addView(navButton("▦","Progetti","Progetti"),new LinearLayout.LayoutParams(0,dp(60),1));
+      bottom.addView(navButton("✎","Scrivi","Sceneggiatura"),new LinearLayout.LayoutParams(0,dp(60),1));
+      bottom.addView(navButton("◉","Doppiaggio","Doppiaggio"),new LinearLayout.LayoutParams(0,dp(60),1));
+      root.addView(bottom);
+    }
   }
   private void openPage(String target){if(editor!=null&&editorDirty){new AlertDialog.Builder(this).setTitle("Sceneggiatura modificata").setMessage("Salvare il copione sul telefono prima di uscire?")
       .setPositiveButton("Salva",(d,w)->{if(saveEditor())go(target);}).setNeutralButton("Non salvare",(d,w)->go(target)).setNegativeButton("Resta qui",null).show();return;}go(target);}
