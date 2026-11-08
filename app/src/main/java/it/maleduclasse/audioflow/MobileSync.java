@@ -57,7 +57,25 @@ final class MobileSync {
         store.importFromPC(download(id));changed++;
       }
     }
+    JSONObject remoteCast=MobileStore.obj();
+    MobileStore.put(remoteCast,"actors",remote.optJSONArray("actors")==null?MobileStore.array():remote.optJSONArray("actors"));
+    MobileStore.put(remoteCast,"characters",remote.optJSONArray("characters")==null?MobileStore.array():remote.optJSONArray("characters"));
+    JSONObject localCast=store.cast();
+    if(!normalizedCast(remoteCast).equals(normalizedCast(localCast))){
+      store.applyRemoteCast(remoteCast);changed++;
+    }
     return changed;
+  }
+  private static String normalizedCast(JSONObject cast){
+    ArrayList<String> result=new ArrayList<>();
+    for(String kind:new String[]{"actors","characters"}){
+      JSONArray list=cast.optJSONArray(kind);
+      if(list==null)continue;
+      for(int i=0;i<list.length();i++){
+        JSONObject o=list.optJSONObject(i);if(o!=null)result.add(kind+"|"+o.optString("id")+"|"+o.optString("name")+"|"+o.optString("actor_id"));
+      }
+    }
+    Collections.sort(result);return result.toString();
   }
   private int pullTakes()throws Exception{
     int downloaded=0;
