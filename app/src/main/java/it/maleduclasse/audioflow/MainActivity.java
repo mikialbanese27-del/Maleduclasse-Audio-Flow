@@ -344,7 +344,7 @@ public final class MainActivity extends Activity {
     if(editor==null)return;
     Editable e=editor.getText();int pos=Math.max(0,editor.getSelectionStart());
     boolean lineStart=pos==0||e.charAt(pos-1)=='\n';
-    String insert=(lineStart?"":"\n")+token+(token.endsWith(" ")?"":"\n");
+    String insert=(lineStart?"":"\n")+token+(token.endsWith(" ")||token.endsWith("\n")?"":"\n");
     e.insert(pos,insert);
     editor.setSelection(Math.min(e.length(),pos+(lineStart?0:1)+token.length()));
     editor.requestFocus();
