@@ -30,7 +30,7 @@ public final class MainActivity extends Activity {
   private static final int MIC=101,IMPORT_WORD=102,IMPORT_TAKE=103,DICTATE=104,IMPORT_EPISODE=105,IMPORT_AVATAR=106;
   private String avatarTarget="";
   private final int BG=Color.rgb(20,18,29),PANEL=Color.rgb(36,31,48),TEXT=Color.rgb(244,241,248);
-  private final int PURPLE=Color.rgb(161,119,242),YELLOW=Color.rgb(231,194,69),GREEN=Color.rgb(27,118,78),RED=Color.rgb(136,35,51),BROWN=Color.rgb(127,78,45);
+  private final int PURPLE=Color.rgb(168,112,255),YELLOW=Color.rgb(201,255,87),GREEN=Color.rgb(27,118,78),RED=Color.rgb(170,52,77),BROWN=Color.rgb(110,80,140);
   private MobileStore store;private MobileSync sync;
   private JSONObject active;private JSONObject cast;
   private String page="Progetti",selectedLine="",actorFilter="Tutti",lastSync="Non sincronizzato";
