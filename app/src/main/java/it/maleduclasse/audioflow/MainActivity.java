@@ -369,6 +369,14 @@ public final class MainActivity extends Activity {
   private void play(File audio){if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}try{player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());player.prepare();player.start();player.setOnCompletionListener(p->{p.release();player=null;});}catch(Exception ex){toast("Impossibile riprodurre: "+ex.getMessage());}}
   private void renderSync(){section("Sincronizzazione con Windows",YELLOW);note("La Wi-Fi privata sincronizza copioni, cast e take tra telefono e PC. Le modifiche offline restano locali finché non viene stabilita la connessione.");
     addButton(body,"⚙ Collega PC / codice",PURPLE,this::pairDialog);
+    addButton(body,"✓ Verifica collegamento reale al PC",GREEN,()->background(()->{
+      try{
+        JSONObject status=sync.state();runOnUiThread(()->{
+          lastSync="PC raggiungibile · "+status.optJSONArray("projects").length()+" episodi disponibili";
+          toast(lastSync);if(page.equals("Sincronizza"))show();
+        });
+      }catch(Exception ex){error(new IOException("Connessione non riuscita: "+ex.getMessage()));}
+    }));
     addButton(body,"⇅ Invia e ricevi modifiche",GREEN,this::syncAll);
     addButton(body,"↓ Importa un progetto già esistente sul PC",PANEL,this::chooseDesktopProject);
     note("Indirizzo: "+(sync.url().isEmpty()?"PC non configurato":sync.url()));note("Ultimo risultato: "+lastSync);
@@ -376,7 +384,7 @@ public final class MainActivity extends Activity {
     addButton(body,"Genera la timeline sul PC",PURPLE,()->requireProject(()->background(()->{try{sync.post("/api/sync/projects/"+pid()+"/assemble",MobileStore.obj());runOnUiThread(()->toast("Bozza timeline generata sul PC"));}catch(Exception e){error(e);}})));
   }
   private void pairDialog(){LinearLayout l=column();pad(l);EditText url=new EditText(this);url.setHint("http://192.168.1.2:18766");url.setText(sync.url());l.addView(url);EditText key=new EditText(this);key.setHint("Codice di abbinamento PC");key.setText(sync.token());l.addView(key);
-    new AlertDialog.Builder(this).setTitle("Abbinamento PC").setView(l).setPositiveButton("Salva",(d,w)->{try{sync.setup(url.getText().toString().trim().replaceAll("/+$",""),key.getText().toString());toast("PC configurato");show();}catch(Exception e){toast(e.getMessage());}}).setNegativeButton("Annulla",null).show();
+    new AlertDialog.Builder(this).setTitle("Abbinamento PC").setView(l).setPositiveButton("Salva",(d,w)->{try{sync.setup(url.getText().toString().trim().replaceAll("/+$",""),key.getText().toString());toast("Dati PC salvati. Premi Verifica collegamento per controllare la rete.");show();}catch(Exception e){toast(e.getMessage());}}).setNegativeButton("Annulla",null).show();
   }
   private void background(Runnable run){new Thread(run,"maf-mobile-sync").start();}
   private void error(Exception ex){runOnUiThread(()->{lastSync=ex.getMessage();toast("Operazione interrotta: "+ex.getMessage());if(page.equals("Sincronizza"))show();});}
