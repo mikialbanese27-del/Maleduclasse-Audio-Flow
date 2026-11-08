@@ -224,7 +224,22 @@ public final class MainActivity extends Activity {
     }
   }
   private void renderScript(){if(active==null){section("Sceneggiatura",PURPLE);note("Apri o crea un progetto prima di scrivere il copione.");return;}
-    section("Sceneggiatura · "+MobileStore.str(active,"title"),Color.rgb(95,172,246));
+    LinearLayout scriptTop=row();
+    TextView scriptHeading=label("Sceneggiatura",19,TEXT,true);
+    scriptTop.addView(scriptHeading,new LinearLayout.LayoutParams(0,-2,1));
+    Button save=btn("✓ Salva",GREEN,()->{if(saveEditor())toast("Copione salvato");});
+    scriptTop.addView(save);
+    Button menuButton=btn("⋮",PANEL,()->{});menuButton.setTextSize(23);
+    menuButton.setOnClickListener(v->{
+      PopupMenu menu=new PopupMenu(this,v);
+      menu.getMenu().add("Dettatura").setOnMenuItemClickListener(item->{dictate();return true;});
+      menu.getMenu().add("Importa Word").setOnMenuItemClickListener(item->{importWord();return true;});
+      menu.getMenu().add("Controlla battute").setOnMenuItemClickListener(item->{
+        if(editor!=null)showValidation(editor.getText().toString());return true;
+      });
+      menu.getMenu().add("Statistiche").setOnMenuItemClickListener(item->{showStats();return true;});
+      menu.show();
+    });scriptTop.addView(menuButton);body.addView(scriptTop);
 
     editor=new EditText(this);editor.setTextColor(TEXT);editor.setHintTextColor(Color.GRAY);editor.setHint("/scena Scena 1\n@Personaggio\nScrivi qui la battuta...");editor.setTextSize(17);
     editor.setGravity(Gravity.TOP);editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
@@ -232,9 +247,7 @@ public final class MainActivity extends Activity {
     draft=MobileStore.str(active,"script");editor.setText(draft);editor.setSelection(editor.length());body.addView(editor,new LinearLayout.LayoutParams(-1,-2));applySyntax();
     editor.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){if(!styling)editorDirty=!s.toString().equals(MobileStore.str(active,"script"));}
       public void afterTextChanged(Editable e){if(styling)return;if(stylingJob!=null)ui.removeCallbacks(stylingJob);stylingJob=()->{applySyntax();characterSuggestions();};ui.postDelayed(stylingJob,190);}});
-    LinearLayout actions=actionRow();actions.addView(btn("Salva copione",GREEN,()->{if(saveEditor())toast("Copione salvato sul telefono");}));actions.addView(btn("@ Personaggio",PURPLE,this::chooseCharacterInsert));actions.addView(btn("Dettatura",PANEL,this::dictate));body.addView(actions);
-    LinearLayout more=actionRow();more.addView(btn("Importa Word",PANEL,this::importWord));more.addView(btn("Controlla battute",PANEL,()->showValidation(editor.getText().toString())));more.addView(btn("Statistiche",PANEL,this::showStats));body.addView(more);
-    note("Salvataggio manuale. La sincronizzazione con Windows si avvia dalla sezione Sincronizza. Nessuna take viene cancellata cambiando una battuta: le precedenti vengono archiviate separatamente.");
+    // Editing utilities are available in the overflow menu beside Save.
   }
 
   private void addScriptPresetToolbar(){
