@@ -456,7 +456,15 @@ public final class MainActivity extends Activity {
   }
   private void renderCast(){section("Cast e personaggi",TEXT);note("I doppiatori e personaggi sono condivisi tra gli episodi. Ogni episodio può avere assegnazioni diverse.");
     addButton(body,"＋ Aggiungi doppiatore",GREEN,()->askText("Nuovo doppiatore","",s->{JSONArray actors=cast.optJSONArray("actors");if(MobileStore.byName(actors,s)!=null){toast("Doppiatore già presente");return;}actors.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s));store.saveCast(cast);show();}));
-    JSONArray actors=cast.optJSONArray("actors");for(int i=0;actors!=null&&i<actors.length();i++){JSONObject a=actors.optJSONObject(i);if(a==null)continue;LinearLayout panel=card(PANEL);LinearLayout r=actionRow();TextView title=label("🎙 "+MobileStore.str(a,"name"),16,TEXT,true);r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.addView(btn("Rinomina",PANEL,()->askText("Rinomina doppiatore",MobileStore.str(a,"name"),name->{MobileStore.put(a,"name",name);store.saveCast(cast);show();})));r.addView(btn("Elimina",RED,()->deleteCastActor(a)));panel.addView(r);}
+    JSONArray actors=cast.optJSONArray("actors");for(int i=0;actors!=null&&i<actors.length();i++){JSONObject a=actors.optJSONObject(i);if(a==null)continue;LinearLayout panel=card(PANEL);LinearLayout r=actionRow();TextView title=label("🎙 "+MobileStore.str(a,"name"),16,TEXT,true);r.addView(title,new LinearLayout.LayoutParams(0,-2,1));Button rename=iconButton("✎",PURPLE,()->askText("Rinomina doppiatore",MobileStore.str(a,"name"),name->{
+        MobileStore.put(a,"name",name);store.saveCast(cast);show();
+      }));
+      rename.setContentDescription("Rinomina doppiatore");
+      r.addView(rename,new LinearLayout.LayoutParams(dp(45),dp(44)));
+      Button delete=iconButton("✕",Color.rgb(249,113,143),()->deleteCastActor(a));
+      delete.setContentDescription("Elimina doppiatore");
+      LinearLayout.LayoutParams delLp=new LinearLayout.LayoutParams(dp(44),dp(44));delLp.setMargins(dp(7),0,0,0);
+      r.addView(delete,delLp);panel.addView(r);}
     addButton(body,"＋ Aggiungi personaggio",PURPLE,()->askText("Nome nuovo personaggio","",s->{JSONArray list=cast.optJSONArray("characters");if(MobileStore.byName(list,s)!=null){toast("Personaggio già presente");return;}list.put(MobileStore.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s),"actor_id",JSONObject.NULL));store.saveCast(cast);show();}));
     JSONArray characters=cast.optJSONArray("characters");for(int i=0;characters!=null&&i<characters.length();i++){JSONObject ch=characters.optJSONObject(i);if(ch==null)continue;LinearLayout panel=card(PANEL);LinearLayout identity=row();
       View face=characterFace(ch,44);face.setOnClickListener(v->chooseAvatar(ch));
@@ -466,11 +474,16 @@ public final class MainActivity extends Activity {
       Button pencil=btn("✎",PANEL,()->askText("Rinomina personaggio",
         MobileStore.str(ch,"name"),name->{MobileStore.put(ch,"name",name);store.saveCast(cast);show();}));
       pencil.setContentDescription("Rinomina personaggio");
-      identity.addView(pencil);panel.addView(identity);
+      identity.addView(pencil,new LinearLayout.LayoutParams(dp(44),dp(44)));
+      panel.addView(identity);
       JSONObject actor=MobileStore.byId(actors,MobileStore.str(ch,"actor_id"));panel.addView(label("Doppiatore base: "+(actor==null?"Non assegnato":MobileStore.str(actor,"name")),13,Color.LTGRAY,false));
       LinearLayout actions=actionRow();
-      actions.addView(btn("Assegna voce",PURPLE,()->chooseActor(ch,null)));
-      actions.addView(btn("✕",RED,()->deleteCastCharacter(ch)));panel.addView(actions);
+      Button assign=btn("Assegna voce",PURPLE,()->chooseActor(ch,null));
+      actions.addView(assign,new LinearLayout.LayoutParams(0,dp(44),1));
+      Button remove=iconButton("✕",Color.rgb(249,113,143),()->deleteCastCharacter(ch));
+      LinearLayout.LayoutParams rlp=new LinearLayout.LayoutParams(dp(45),dp(44));
+      rlp.setMargins(dp(10),0,0,0);actions.addView(remove,rlp);
+      panel.addView(actions);
     }
   }
   private static JSONArray withoutId(JSONArray source,String id){
