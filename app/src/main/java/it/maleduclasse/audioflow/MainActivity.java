@@ -51,7 +51,7 @@ public final class MainActivity extends Activity {
   private Runnable deckSeekTick;
   private android.widget.SeekBar deckSeekBar;
   private android.widget.TextView deckTimeLabel;
-  private long deckRecordStartMs=0L;
+  private long deckRecordStartMs=0L,deckLastDurationMs=0L;
 
   private Button activePlayButton;private File activePlayFile;
   private Button dictationButton;private android.speech.SpeechRecognizer speechRecognizer;
@@ -776,7 +776,7 @@ public final class MainActivity extends Activity {
     Button accept=iconButton("✓",Color.rgb(77,235,151),()->{
       if(recorder!=null){toast("Premi STOP prima di confermare");return;}
       if(pending)completeReview(line,true);
-      else if(selectedAudio!=null){store.setPreferred(pid(),lid,selectedAudio.getName());showTakeDialog(line);}
+      else if(selectedAudio!=null)toast("Questa take è già confermata");
     });
     accept.setTextSize(27);controls.addView(accept,new LinearLayout.LayoutParams(dp(57),dp(55)));
     recorderButton=new Button(this);recorderButton.setAllCaps(false);
@@ -804,7 +804,13 @@ public final class MainActivity extends Activity {
     recordingClock=new Chronometer(this);recordingClock.setTextColor(TEXT);
     recordingClock.setTextSize(24);recordingClock.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);
     recordingClock.setGravity(Gravity.CENTER);
-    if(recorder!=null){recordingClock.setBase(deckRecordStartMs>0?deckRecordStartMs:SystemClock.elapsedRealtime());recordingClock.start();}
+    if(recorder!=null){
+      recordingClock.setBase(deckRecordStartMs>0?deckRecordStartMs:SystemClock.elapsedRealtime());
+      recordingClock.start();
+    }else if(selectedAudio!=null){
+      long durationMs=pending?deckLastDurationMs:audioLength(selectedAudio);
+      recordingClock.setBase(SystemClock.elapsedRealtime()-durationMs);
+    }
     dialContent.addView(recordingClock,new LinearLayout.LayoutParams(-1,dp(42)));
     LinearLayout extras=row();extras.setGravity(Gravity.CENTER);
     Button favorite=iconButton((pending?pendingPreferred:preferred)?"★":"☆",YELLOW,()->{
@@ -946,7 +952,10 @@ public final class MainActivity extends Activity {
     if(recorder==null){toast("Premi REC per iniziare");renderRecorderState();return;}
     ui.removeCallbacks(sampleAmplitude);
     boolean valid=false;
-    try{recorder.stop();valid=recordingFile!=null&&recordingFile.length()>256;}
+    try{
+      recorder.stop();deckLastDurationMs=Math.max(0,SystemClock.elapsedRealtime()-deckRecordStartMs);
+      valid=recordingFile!=null&&recordingFile.length()>256;
+    }
     catch(Exception ex){toast("Registrazione non valida: "+ex.getMessage());}
     finally{recorder.release();recorder=null;renderRecorderState();}
     if(recordingClock!=null)recordingClock.stop();
