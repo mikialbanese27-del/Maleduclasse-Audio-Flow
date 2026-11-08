@@ -506,6 +506,11 @@ public final class MainActivity extends Activity {
     LinearLayout top=row();
     TextView who=label(MobileStore.characterName(line,cast),15,Color.rgb(194,176,236),true);
     top.addView(who,new LinearLayout.LayoutParams(0,-2,1));
+    Button close=btn("×",Color.rgb(40,36,51),()->{
+      if(recorder!=null||recordingPending){toast("Completa prima la registrazione");return;}
+      if(takeDialog!=null)takeDialog.dismiss();show();
+    });close.setTextSize(22);close.setContentDescription("Chiudi registratore");
+    top.addView(close);
     Button more=btn("⋮",Color.rgb(40,36,51),()->{});more.setTextSize(23);
     more.setOnClickListener(v->{
       PopupMenu menu=new PopupMenu(this,v);
