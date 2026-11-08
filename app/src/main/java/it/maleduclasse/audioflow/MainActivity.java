@@ -49,6 +49,9 @@ public final class MainActivity extends Activity {
   private Button recorderButton;private String selectedTakeName="";
 
   @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
+    // Own the system-bar insets rather than rendering behind clock / navigation buttons.
+    getWindow().getDecorView().setSystemUiVisibility(0);
+    getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
     store=new MobileStore(this);sync=new MobileSync(this,store);cast=store.cast();
     String pid=getPreferences(0).getString("current_project","");active=store.project(pid);
     if(MobileStore.str(active,"project_id").isEmpty()){List<JSONObject> ps=store.projects();active=ps.isEmpty()?null:ps.get(0);}
@@ -96,7 +99,15 @@ public final class MainActivity extends Activity {
   private LinearLayout row(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.HORIZONTAL);l.setGravity(Gravity.CENTER_VERTICAL);return l;}
   private GradientDrawable box(int color,int radius,int strokeColor,int strokeWidth){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));if(strokeWidth>0)d.setStroke(dp(strokeWidth),strokeColor);return d;}
   private TextView label(String s,int size,int color,boolean bold){TextView v=new TextView(this);v.setText(s);v.setTextColor(color);v.setTextSize(size);v.setPadding(dp(7),dp(7),dp(7),dp(7));if(bold)v.setTypeface(Typeface.DEFAULT,Typeface.BOLD);return v;}
-  private Button btn(String s,int color,Runnable handler){Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTextColor(TEXT);b.setTextSize(13);b.setPadding(dp(7),dp(3),dp(7),dp(3));b.setBackgroundTintList(ColorStateList.valueOf(color));b.setOnClickListener(v->handler.run());return b;}
+  private Button btn(String s,int color,Runnable handler){
+    Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTextSize(13);
+    b.setPadding(dp(10),dp(5),dp(10),dp(5));
+    int stroke=color==PANEL?Color.rgb(94,79,120):color;
+    b.setTextColor(color==PANEL?TEXT:color);
+    b.setBackgroundTintList(null);
+    b.setBackground(box(Color.rgb(27,24,39),17,stroke,1));
+    b.setOnClickListener(v->handler.run());return b;
+  }
   private void addButton(LinearLayout target,String label,int color,Runnable handler){Button b=btn(label,color,handler);target.addView(b,new LinearLayout.LayoutParams(-1,dp(50)));}
   private void pad(View v){v.setPadding(dp(12),dp(12),dp(12),dp(12));}
   private void section(String s,int color){TextView title=label(s,19,color,true);body.addView(title);}
@@ -120,10 +131,14 @@ public final class MainActivity extends Activity {
   private void show(){
     dismissSuggestions();editor=null;editorDirty=false;
     root=column();root.setBackgroundColor(BG);setContentView(root);
+    // Non-edge-to-edge window: system status/navigation bars reserve their own space.
+    getWindow().getDecorView().setFitsSystemWindows(true);
+    getWindow().setStatusBarColor(Color.rgb(18,15,29));
+    getWindow().setNavigationBarColor(Color.rgb(18,15,29));
     LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
     header.setPadding(dp(12),dp(5),dp(10),dp(5));header.setBackgroundColor(Color.rgb(26,23,36));
     View brand=BrandLogo.view(this);
-    header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
+    // Logo belongs at the extreme start of the header, not in a centered spacer.
     header.addView(brand,new LinearLayout.LayoutParams(dp(50),dp(51)));
     header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
     connectionDot=label("●",22,pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102),true);
