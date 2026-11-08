@@ -621,6 +621,13 @@ public final class MainActivity extends Activity {
     LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,dp(76));cp.setMargins(0,dp(18),0,dp(15));
     pane.addView(recordingClock,cp);
     LinearLayout center=row();center.setGravity(Gravity.CENTER);
+    JSONObject portrait=MobileStore.byId(cast.optJSONArray("characters"),MobileStore.str(line,"character_id"));
+    if(portrait!=null){
+      View face=characterFace(portrait,55);
+      LinearLayout.LayoutParams portraitLp=new LinearLayout.LayoutParams(dp(55),dp(55));
+      portraitLp.setMargins(0,0,dp(20),dp(12));
+      center.addView(face,portraitLp);
+    }
     recorderButton=new Button(this);recorderButton.setAllCaps(false);recorderButton.setTextColor(TEXT);
     recorderButton.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
     recorderButton.setOnClickListener(v->{if(recorder==null)startRecord(lid,false);else stopRecord();});
