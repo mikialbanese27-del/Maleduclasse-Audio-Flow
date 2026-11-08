@@ -37,6 +37,7 @@ public final class MainActivity extends Activity {
   private Handler ui=new Handler(Looper.getMainLooper());private Runnable stylingJob;private PopupWindow suggestions;
   private MediaRecorder recorder;private MediaPlayer player;private File recordingFile;private String recordingLine="";private boolean recordingProvisional=false;private boolean syncBusy=false;
   private AlertDialog takeDialog;private Chronometer recordingClock;private long lastAutoSync=0L;
+  private Button recorderButton;private String selectedTakeName="";
 
   @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
     store=new MobileStore(this);sync=new MobileSync(this,store);cast=store.cast();
@@ -114,6 +115,7 @@ public final class MainActivity extends Activity {
   private void renderScript(){if(active==null){section("Sceneggiatura",PURPLE);note("Apri o crea un progetto prima di scrivere il copione.");return;}
     section("Sceneggiatura · "+MobileStore.str(active,"title"),Color.rgb(95,172,246));
     note("@Personaggio  ·  /scena Titolo  ·  /azione Testo  ·  /pausa 1.5  ·  /sfx Tag  ·  /ambiente Tag  ·  /musica Tag");
+    addScriptPresetToolbar();
     editor=new EditText(this);editor.setTextColor(TEXT);editor.setHintTextColor(Color.GRAY);editor.setHint("/scena Scena 1\n@Personaggio\nScrivi qui la battuta...");editor.setTextSize(17);
     editor.setGravity(Gravity.TOP);editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
     editor.setTypeface(Typeface.MONOSPACE);editor.setPadding(dp(14),dp(14),dp(14),dp(14));editor.setBackground(box(Color.rgb(25,31,49),10,PURPLE,1));editor.setMinLines(16);
@@ -123,6 +125,34 @@ public final class MainActivity extends Activity {
     LinearLayout actions=actionRow();actions.addView(btn("Salva copione",GREEN,()->{if(saveEditor())toast("Copione salvato sul telefono");}));actions.addView(btn("@ Personaggio",PURPLE,this::chooseCharacterInsert));actions.addView(btn("Dettatura",PANEL,this::dictate));body.addView(actions);
     LinearLayout more=actionRow();more.addView(btn("Importa Word",PANEL,this::importWord));more.addView(btn("Controlla battute",PANEL,()->showValidation(editor.getText().toString())));more.addView(btn("Statistiche",PANEL,this::showStats));body.addView(more);
     note("Salvataggio manuale. La sincronizzazione con Windows si avvia dalla sezione Sincronizza. Nessuna take viene cancellata cambiando una battuta: le precedenti vengono archiviate separatamente.");
+  }
+
+  private void addScriptPresetToolbar(){
+    body.addView(label("TAG RAPIDI",12,YELLOW,true));
+    HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
+    LinearLayout presets=row();
+    String[] names={"@ Personaggio","Scena","Azione","Pausa","SFX","Ambiente","Musica"};
+    String[] tokens={"","/scena ","/azione ","/pausa 1.5","/sfx ","/ambiente ","/musica "};
+    int[] colors={GREEN,Color.rgb(55,104,169),RED,PANEL,Color.rgb(153,65,118),BROWN,Color.rgb(140,109,38)};
+    for(int i=0;i<names.length;i++){
+      final int which=i;
+      Button b=btn(names[i],colors[i],()->{if(which==0)chooseCharacterInsert();else insertScriptToken(tokens[which]);});
+      b.setFocusable(false);b.setTextSize(12);
+      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(46));lp.setMargins(dp(2),0,dp(5),0);
+      presets.addView(b,lp);
+    }
+    scroll.addView(presets);body.addView(scroll);
+  }
+  private void insertScriptToken(String token){
+    if(editor==null)return;
+    Editable e=editor.getText();int pos=Math.max(0,editor.getSelectionStart());
+    boolean lineStart=pos==0||e.charAt(pos-1)=='\n';
+    String insert=(lineStart?"":"\n")+token+(token.endsWith(" ")?"":"\n");
+    e.insert(pos,insert);
+    editor.setSelection(Math.min(e.length(),pos+(lineStart?0:1)+token.length()));
+    editor.requestFocus();
+    InputMethodManager keyboard=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+    if(keyboard!=null)keyboard.showSoftInput(editor,InputMethodManager.SHOW_IMPLICIT);
   }
   private void applySyntax(){if(editor==null||styling)return;Editable edit=editor.getText();if(edit.length()>150000)return;styling=true;
     for(ForegroundColorSpan span:edit.getSpans(0,edit.length(),ForegroundColorSpan.class))edit.removeSpan(span);
@@ -192,11 +222,11 @@ public final class MainActivity extends Activity {
     takeDialog=new AlertDialog.Builder(this).setTitle("Battuta · take").setView(scroll).setPositiveButton("Chiudi",(d,w)->{recordingClock=null;show();}).create();takeDialog.setOnDismissListener(d->{if(recordingClock!=null){recordingClock.stop();recordingClock=null;}});takeDialog.show();
   }
   private void startRecord(String lid,boolean provisional){if(recorder!=null){toast("Registrazione in corso");return;}if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC);toast("Autorizza microfono e premi di nuovo Registra");return;}
-    try{recordingLine=lid;recordingProvisional=provisional;recordingFile=new File(store.takeDir(pid(),lid),"take_"+System.currentTimeMillis()+".m4a");recorder=new MediaRecorder();recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioSamplingRate(44100);recorder.setAudioEncodingBitRate(128000);recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();if(recordingClock!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}toast("Registrazione avviata");}
+    try{recordingLine=lid;recordingProvisional=provisional;recordingFile=new File(store.takeDir(pid(),lid),"take_"+System.currentTimeMillis()+".m4a");recorder=new MediaRecorder();recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioSamplingRate(44100);recorder.setAudioEncodingBitRate(128000);recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();if(recorderButton!=null){recorderButton.setText("■ STOP");recorderButton.setBackground(box(Color.rgb(130,38,53),90,Color.rgb(252,184,190),3));}if(recordingClock!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}toast("Registrazione avviata");}
     catch(Exception ex){if(recorder!=null){try{recorder.release();}catch(Exception ignored){}}recorder=null;toast("Microfono: "+ex.getMessage());}
   }
   private void stopRecord(){if(recorder==null){toast("Nessuna registrazione attiva");return;}boolean saved=false;try{recorder.stop();saved=recordingFile!=null&&recordingFile.length()>0;}catch(Exception ex){toast("Errore durante lo Stop: "+ex.getMessage());}finally{recorder.release();recorder=null;}
-    if(saved){if(recordingProvisional)store.setProvisional(pid(),recordingLine,recordingFile.getName(),true);toast("Take salvata immediatamente sul telefono");}else if(recordingFile!=null)recordingFile.delete();
+    if(saved){selectedTakeName=recordingFile.getName();if(recordingProvisional)store.setProvisional(pid(),recordingLine,recordingFile.getName(),true);toast("Take salvata immediatamente sul telefono");}else if(recordingFile!=null)recordingFile.delete();
     if(recordingClock!=null)recordingClock.stop();JSONObject line=MobileStore.byId(active.optJSONArray("lines"),recordingLine);recordingLine="";if(line!=null)showTakeDialog(line);if(saved)ui.postDelayed(this::autoSync,700);
   }
   private void play(File audio){if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}try{player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());player.prepare();player.start();player.setOnCompletionListener(p->{p.release();player=null;});}catch(Exception ex){toast("Impossibile riprodurre: "+ex.getMessage());}}
@@ -223,7 +253,7 @@ public final class MainActivity extends Activity {
     else if(request==IMPORT_TAKE&&active!=null&&!selectedLine.isEmpty()){
       String lid=selectedLine;String extension=".m4a";String name="take_import_"+System.currentTimeMillis();String type=getContentResolver().getType(intent.getData());
       if(type!=null){if(type.contains("wav"))extension=".wav";else if(type.contains("mpeg"))extension=".mp3";else if(type.contains("ogg"))extension=".ogg";else if(type.contains("flac"))extension=".flac";else if(type.contains("aac"))extension=".aac";}
-      File destination=new File(store.takeDir(pid(),lid),name+extension);try(InputStream in=getContentResolver().openInputStream(intent.getData());FileOutputStream out=new FileOutputStream(destination)){byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}JSONObject line=MobileStore.byId(active.optJSONArray("lines"),lid);if(line!=null)showTakeDialog(line);toast("Audio importato");
+      File destination=new File(store.takeDir(pid(),lid),name+extension);try(InputStream in=getContentResolver().openInputStream(intent.getData());FileOutputStream out=new FileOutputStream(destination)){byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}JSONObject line=MobileStore.byId(active.optJSONArray("lines"),lid);selectedTakeName=destination.getName();if(line!=null)showTakeDialog(line);toast("Audio importato");
     }
     else if(request==IMPORT_EPISODE){ /* reserved for migration */ }
     }catch(Exception ex){toast("File: "+ex.getMessage());}}
