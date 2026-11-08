@@ -903,7 +903,8 @@ public final class MainActivity extends Activity {
   private void renderRecorderState(){
     if(recorderButton==null)return;
     boolean recording=recorder!=null;
-    recorderButton.setText(recording?"■ STOP":"● REC");
+    boolean hasTake=recordingPending||store.takes(pid(),selectedLine).length>0;
+    recorderButton.setText(recording?"■ STOP":(hasTake?"▶ PLAY":"● REC"));
     recorderButton.setTextSize(recording?19:22);
     recorderButton.setBackground(box(recording?Color.rgb(100,43,56):Color.rgb(198,45,69),
       90,recording?Color.rgb(255,181,195):Color.rgb(242,129,151),3));
@@ -927,10 +928,13 @@ public final class MainActivity extends Activity {
       recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
       recorder.setAudioSamplingRate(44100);recorder.setAudioEncodingBitRate(128000);
       recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();
+      deckRecordStartMs=SystemClock.elapsedRealtime();pendingPreferred=false;
       capturedPeaks.clear();ui.removeCallbacks(sampleAmplitude);ui.postDelayed(sampleAmplitude,110);
       if(recordingClock!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}
       if(takeDialog!=null)takeDialog.setCancelable(false);
       renderRecorderState();
+      JSONObject currentLine=MobileStore.byId(active.optJSONArray("lines"),lid);
+      if(currentLine!=null)showTakeDialog(currentLine);
     }catch(Exception ex){
       ui.removeCallbacks(sampleAmplitude);
       if(recorder!=null){try{recorder.release();}catch(Exception ignored){}}
@@ -953,7 +957,7 @@ public final class MainActivity extends Activity {
     }
     recordingPending=true;
     JSONObject line=MobileStore.byId(active.optJSONArray("lines"),recordingLine);
-    showRecordReview(line);
+    if(line!=null)showTakeDialog(line);
   }
   private View waveformPreview(){
     final ArrayList<Integer> peaks=new ArrayList<>(capturedPeaks);
@@ -977,11 +981,14 @@ public final class MainActivity extends Activity {
   private void completeReview(JSONObject line,boolean accept){
     if(!recordingPending||recordingFile==null)return;
     File pending=recordingFile;String lid=recordingLine;
+    if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;activePlayFile=null;}
     if(accept){
       File dest=new File(store.takeDir(pid(),lid),pending.getName());
       try{
         java.nio.file.Files.move(pending.toPath(),dest.toPath());
         if(recordingProvisional)store.setProvisional(pid(),lid,dest.getName(),true);
+        if(pendingPreferred)store.setPreferred(pid(),lid,dest.getName());
+        pendingPreferred=false;recordingProvisional=false;
         selectedTakeName=dest.getName();
         recordingPending=false;recordingFile=null;recordingLine="";
         if(reviewDialog!=null){reviewDialog.dismiss();reviewDialog=null;}
@@ -992,6 +999,7 @@ public final class MainActivity extends Activity {
       if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}
       if(!pending.delete()){toast("Impossibile scartare la take");return;}
       recordingPending=false;recordingFile=null;recordingLine="";
+      pendingPreferred=false;recordingProvisional=false;
       if(reviewDialog!=null){reviewDialog.dismiss();reviewDialog=null;}
       if(line!=null)showTakeDialog(line);
     }
