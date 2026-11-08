@@ -104,6 +104,7 @@ public final class MainActivity extends Activity {
     HorizontalScrollView navScroll=new HorizontalScrollView(this);navScroll.setHorizontalScrollBarEnabled(false);
     LinearLayout nav=row();String[] tabs={"Progetti","Sceneggiatura","Doppiaggio","⚙ Cast","Sincronizza"};
     for(String tab:tabs){Button b=btn(tab,tab.equals(page)?PURPLE:PANEL,()->openPage(tab));nav.addView(b,new LinearLayout.LayoutParams(-2,dp(45)));}navScroll.addView(nav);root.addView(navScroll);
+    if(page.equals("Sceneggiatura")&&active!=null)addScriptPresetToolbar();
     ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));body=column();body.setPadding(dp(10),dp(10),dp(10),dp(36));scroll.addView(body);
     switch(page){case "Progetti":renderProjects();break;case "Sceneggiatura":renderScript();break;case "Doppiaggio":renderDubbing();break;case "⚙ Cast":renderCast();break;default:renderSync();}
   }
@@ -136,7 +137,6 @@ public final class MainActivity extends Activity {
   private void renderScript(){if(active==null){section("Sceneggiatura",PURPLE);note("Apri o crea un progetto prima di scrivere il copione.");return;}
     section("Sceneggiatura · "+MobileStore.str(active,"title"),Color.rgb(95,172,246));
     note("@Personaggio  ·  /scena Titolo  ·  /azione Testo  ·  /pausa 1.5  ·  /sfx Tag  ·  /ambiente Tag  ·  /musica Tag");
-    addScriptPresetToolbar();
     editor=new EditText(this);editor.setTextColor(TEXT);editor.setHintTextColor(Color.GRAY);editor.setHint("/scena Scena 1\n@Personaggio\nScrivi qui la battuta...");editor.setTextSize(17);
     editor.setGravity(Gravity.TOP);editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
     editor.setTypeface(Typeface.MONOSPACE);editor.setPadding(dp(14),dp(14),dp(14),dp(14));editor.setBackground(box(Color.rgb(25,31,49),10,PURPLE,1));editor.setMinLines(16);
@@ -149,7 +149,7 @@ public final class MainActivity extends Activity {
   }
 
   private void addScriptPresetToolbar(){
-    body.addView(label("TAG RAPIDI",12,YELLOW,true));
+    root.addView(label("TAG RAPIDI",12,YELLOW,true));
     HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
     LinearLayout presets=row();
     String[] names={"@ Personaggio","Scena","Azione","Pausa","SFX","Ambiente","Musica"};
@@ -162,7 +162,7 @@ public final class MainActivity extends Activity {
       LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(46));lp.setMargins(dp(2),0,dp(5),0);
       presets.addView(b,lp);
     }
-    scroll.addView(presets);body.addView(scroll);
+    scroll.addView(presets);root.addView(scroll);
   }
   private void insertScriptToken(String token){
     if(editor==null)return;
