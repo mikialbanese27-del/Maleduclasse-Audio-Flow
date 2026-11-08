@@ -307,9 +307,9 @@ public final class MainActivity extends Activity {
     if(recordingClock!=null)recordingClock.stop();JSONObject line=MobileStore.byId(active.optJSONArray("lines"),recordingLine);recordingLine="";if(line!=null)showTakeDialog(line);if(saved)ui.postDelayed(this::autoSync,700);
   }
   private void play(File audio){if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}try{player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());player.prepare();player.start();player.setOnCompletionListener(p->{p.release();player=null;});}catch(Exception ex){toast("Impossibile riprodurre: "+ex.getMessage());}}
-  private void renderSync(){section("Sincronizzazione con Windows",YELLOW);note("Il telefono è l'origine di progetti, sceneggiature, cast e take. La timeline si crea automaticamente sul PC dopo il trasferimento.");
+  private void renderSync(){section("Sincronizzazione con Windows",YELLOW);note("La Wi-Fi privata sincronizza copioni, cast e take tra telefono e PC. Le modifiche offline restano locali finché non viene stabilita la connessione.");
     addButton(body,"⚙ Collega PC / codice",PURPLE,this::pairDialog);
-    addButton(body,"⇅ Invia tutti i progetti e le registrazioni",GREEN,this::syncAll);
+    addButton(body,"⇅ Invia e ricevi modifiche",GREEN,this::syncAll);
     addButton(body,"↓ Importa un progetto già esistente sul PC",PANEL,this::chooseDesktopProject);
     note("Indirizzo: "+(sync.url().isEmpty()?"PC non configurato":sync.url()));note("Ultimo risultato: "+lastSync);
     note("Registri offline anche con PC spento. Quando riapri l’app sulla stessa Wi-Fi privata del PC, tenta automaticamente il trasferimento. Il pulsante manuale resta disponibile. Sul PC avvia AVVIA_PC_ANDROID.bat. Non usare reti pubbliche né aprire la porta verso Internet: HTTP LAN non è cifrato.");
