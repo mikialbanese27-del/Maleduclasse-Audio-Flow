@@ -45,7 +45,11 @@ public final class MainActivity extends Activity {
     if(MobileStore.str(active,"project_id").isEmpty()){List<JSONObject> ps=store.projects();active=ps.isEmpty()?null:ps.get(0);}
     show();
   }
-  @Override protected void onResume(){super.onResume();ui.postDelayed(this::autoSync,1100);}
+  private final Runnable lanHeartbeat=new Runnable(){
+    @Override public void run(){autoSync();ui.postDelayed(this,12000);}
+  };
+  @Override protected void onResume(){super.onResume();ui.removeCallbacks(lanHeartbeat);ui.postDelayed(lanHeartbeat,1100);}
+  @Override protected void onPause(){ui.removeCallbacks(lanHeartbeat);super.onPause();}
   private boolean wifiConnected(){
     ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
     if(cm==null)return false;Network network=cm.getActiveNetwork();if(network==null)return false;
@@ -54,10 +58,27 @@ public final class MainActivity extends Activity {
   }
   private void autoSync(){
     long now=SystemClock.elapsedRealtime();
-    if(sync==null||sync.url().isEmpty()||syncBusy||!wifiConnected()||(lastAutoSync>0&&now-lastAutoSync<60000))return;
+    if(sync==null||sync.url().isEmpty()||syncBusy||recorder!=null||editorDirty||!wifiConnected()||
+       (lastAutoSync>0&&now-lastAutoSync<11000))return;
     lastAutoSync=now;syncBusy=true;
-    background(()->{try{MobileSync.Result result=sync.synchronizeAll();runOnUiThread(()->{syncBusy=false;lastSync="Automatico: "+result.message();if(page.equals("Sincronizza"))show();});}
-      catch(Exception ex){syncBusy=false;lastSync="PC non raggiungibile: "+ex.getMessage();}
+    background(()->{
+      try{
+        MobileSync.Result result=sync.synchronizeAll();
+        runOnUiThread(()->{
+          syncBusy=false;lastSync="Automatico: "+result.message();
+          if(result.receivedProjects>0||result.receivedTakes>0){
+            cast=store.cast();
+            if(active!=null)active=store.project(pid());
+            if(page.equals("Progetti")||page.equals("⚙ Cast")||
+               (page.equals("Doppiaggio")&&(takeDialog==null||!takeDialog.isShowing())))show();
+            else if(page.equals("Sceneggiatura")&&editor!=null&&!editorDirty&&!editor.hasFocus()){
+              editor.setText(MobileStore.str(active,"script"));applySyntax();
+            }
+          }else if(page.equals("Sincronizza"))show();
+        });
+      }catch(Exception ex){
+        runOnUiThread(()->{syncBusy=false;lastSync="PC non raggiungibile o conflitto: "+ex.getMessage();});
+      }
     });
   }
   private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
