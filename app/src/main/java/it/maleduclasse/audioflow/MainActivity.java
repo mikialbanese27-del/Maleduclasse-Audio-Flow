@@ -345,19 +345,79 @@ public final class MainActivity extends Activity {
         if(which!=0){JSONObject entry=MobileStore.obj();MobileStore.put(entry,"character_id",MobileStore.str(character,"id"));MobileStore.put(entry,"actor_id",actorId);next.put(entry);}MobileStore.put(projectOverride,"overrides",next);MobileStore.put(projectOverride,"dirty",true);store.saveProject(projectOverride);
       }show();
     }).show();}
-  private void renderDubbing(){if(active==null){section("Doppiaggio",GREEN);note("Crea o apri un episodio prima di registrare.");return;}
-    section("Doppiaggio · Offline",Color.rgb(98,218,151));note("Scegli la battuta, registra più take, ascolta, assegna preferita/provvisoria. Stop salva subito: nessuna attesa per waveform o Internet.");
-    JSONArray lines=active.optJSONArray("lines");ArrayList<String> actors=new ArrayList<>();actors.add("Tutti");if(lines!=null)for(int i=0;i<lines.length();i++){JSONObject l=lines.optJSONObject(i);if(l!=null){String name=MobileStore.actorName(l,active,cast);if(!actors.contains(name))actors.add(name);}}
-    Spinner filter=new Spinner(this);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,actors);filter.setAdapter(adapter);int selection=actors.indexOf(actorFilter);filter.setSelection(Math.max(0,selection));body.addView(filter);
-    filter.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onNothingSelected(android.widget.AdapterView<?> p){}public void onItemSelected(android.widget.AdapterView<?> p,View v,int index,long id){String newValue=actors.get(index);if(!newValue.equals(actorFilter)){actorFilter=newValue;show();}}});
-    int ready=0,total=0;LinearLayout cells=column();if(lines!=null)for(int i=0;i<lines.length();i++){
-      JSONObject line=lines.optJSONObject(i);if(line==null)continue;String who=MobileStore.actorName(line,active,cast);if(!actorFilter.equals("Tutti")&&!actorFilter.equals(who))continue;
-      total++;String id=MobileStore.str(line,"id");File[] takeFiles=store.takes(pid(),id);boolean complete=takeFiles.length>0&&!"rerecord".equals(MobileStore.str(line,"status"));if(complete)ready++;
-      LinearLayout cell=column();cell.setPadding(dp(13),dp(12),dp(13),dp(12));cell.setBackground(box(complete?GREEN:RED,9,id.equals(selectedLine)?PURPLE:Color.rgb(75,61,83),id.equals(selectedLine)?4:1));
-      cell.addView(label(MobileStore.characterName(line,cast)+"   ·   "+who+"   ·   "+takeFiles.length+" take",13,TEXT,true));cell.addView(label(MobileStore.str(line,"text"),16,TEXT,false));
-      cell.setOnClickListener(v->{selectedLine=id;showTakeDialog(line);});LinearLayout.LayoutParams layout=new LinearLayout.LayoutParams(-1,-2);layout.setMargins(0,dp(4),0,dp(5));cells.addView(cell,layout);
+  private void openDubbingFilter(View anchor){
+    ArrayList<String> options=new ArrayList<>();
+    options.add("Tutti");
+    JSONArray lines=active==null?null:active.optJSONArray("lines");
+    if(lines!=null)for(int i=0;i<lines.length();i++){
+      JSONObject line=lines.optJSONObject(i);if(line==null)continue;
+      String actor=MobileStore.actorName(line,active,cast);
+      String character=MobileStore.characterName(line,cast);
+      if(!options.contains("Doppiatore: "+actor))options.add("Doppiatore: "+actor);
+      if(!options.contains("Personaggio: "+character))options.add("Personaggio: "+character);
     }
-    body.addView(label("Completate: "+ready+" / "+total+" battute",16,YELLOW,true));body.addView(cells);
+    new AlertDialog.Builder(this).setTitle("Filtra le battute").setItems(options.toArray(new String[0]),(d,index)->{
+      actorFilter=options.get(index);show();
+    }).setNegativeButton("Annulla",null).show();
+  }
+  private boolean lineMatchesFilter(JSONObject line){
+    if(actorFilter.equals("Tutti"))return true;
+    if(actorFilter.startsWith("Doppiatore: "))return actorFilter.substring(12).equals(MobileStore.actorName(line,active,cast));
+    if(actorFilter.startsWith("Personaggio: "))return actorFilter.substring(13).equals(MobileStore.characterName(line,cast));
+    // Legacy filter stored from the previous alpha.
+    return actorFilter.equals(MobileStore.actorName(line,active,cast));
+  }
+  private void sendTimelineToPc(){
+    if(active==null)return;
+    if(syncBusy){toast("Sincronizzazione già in corso");return;}
+    syncBusy=true;
+    background(()->{
+      try{
+        // Always send pending edits and accepted takes before assembling.
+        MobileSync.Result result=sync.synchronizeAll();
+        JSONObject assembly=sync.post("/api/sync/projects/"+pid()+"/assemble",MobileStore.obj());
+        runOnUiThread(()->{
+          syncBusy=false;pcOnline=true;updateConnectionDot();
+          toast("Timeline PC aggiornata · "+assembly.optInt("inserted",0)+" nuove clip");
+        });
+      }catch(Exception ex){runOnUiThread(()->{syncBusy=false;pcOnline=false;updateConnectionDot();toast("Invio timeline non riuscito: "+ex.getMessage());});}
+    });
+  }
+  private void renderDubbing(){
+    if(active==null){section("Doppiaggio",TEXT);return;}
+    LinearLayout top=row();
+    TextView title=label("Doppiaggio",20,TEXT,true);top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
+    Button filter=btn("☷",PANEL,()->{});filter.setTextSize(22);
+    filter.setContentDescription("Filtra per doppiatore o personaggio");
+    filter.setOnClickListener(v->openDubbingFilter(v));top.addView(filter);body.addView(top);
+    if(!actorFilter.equals("Tutti")){
+      TextView activeFilter=label(actorFilter+"   ×",12,Color.rgb(177,155,219),false);
+      activeFilter.setOnClickListener(v->{actorFilter="Tutti";show();});body.addView(activeFilter);
+    }
+    JSONArray lines=active.optJSONArray("lines");
+    int ready=0,total=0;LinearLayout cells=column();
+    if(lines!=null)for(int i=0;i<lines.length();i++){
+      JSONObject line=lines.optJSONObject(i);if(line==null||!lineMatchesFilter(line))continue;
+      total++;String id=MobileStore.str(line,"id");
+      File[] takes=store.takes(pid(),id);
+      boolean complete=takes.length>0&&!"rerecord".equals(MobileStore.str(line,"status"));
+      if(complete)ready++;
+      // Keep the approved red/green cells and yellow selection stroke unchanged.
+      LinearLayout cell=column();cell.setPadding(dp(13),dp(12),dp(13),dp(12));
+      cell.setBackground(box(complete?GREEN:RED,9,
+        id.equals(selectedLine)?PURPLE:Color.rgb(75,61,83),id.equals(selectedLine)?4:1));
+      cell.addView(label(MobileStore.characterName(line,cast)+"   ·   "+MobileStore.actorName(line,active,cast)+"   ·   "+takes.length+" take",13,TEXT,true));
+      cell.addView(label(MobileStore.str(line,"text"),16,TEXT,false));
+      cell.setOnClickListener(v->{selectedLine=id;showTakeDialog(line);});
+      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
+      lp.setMargins(0,dp(4),0,dp(5));cells.addView(cell,lp);
+    }
+    body.addView(label(ready+" / "+total+" battute completate",12,Color.rgb(163,162,173),false));
+    body.addView(cells);
+    Button finish=btn("✓  Invia alla timeline su PC",PURPLE,this::sendTimelineToPc);
+    finish.setTextSize(15);
+    LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(-1,dp(55));
+    fp.setMargins(0,dp(17),0,dp(6));body.addView(finish,fp);
   }
 
   private void showTakeDialog(JSONObject line){
@@ -572,7 +632,7 @@ public final class MainActivity extends Activity {
     addButton(body,"↓ Importa un progetto già esistente sul PC",PANEL,this::chooseDesktopProject);
     note("Indirizzo: "+(sync.url().isEmpty()?"PC non configurato":sync.url()));note("Ultimo risultato: "+lastSync);
     note("Registri offline anche con PC spento. Quando riapri l’app sulla stessa Wi-Fi privata del PC, tenta automaticamente il trasferimento. Il pulsante manuale resta disponibile. Sul PC avvia AVVIA_PC_ANDROID.bat. Non usare reti pubbliche né aprire la porta verso Internet: HTTP LAN non è cifrato.");
-    addButton(body,"Genera la timeline sul PC",PURPLE,()->requireProject(()->background(()->{try{sync.post("/api/sync/projects/"+pid()+"/assemble",MobileStore.obj());runOnUiThread(()->toast("Bozza timeline generata sul PC"));}catch(Exception e){error(e);}})));
+
   }
   private void pairDialog(){LinearLayout l=column();pad(l);EditText url=new EditText(this);url.setHint("http://192.168.1.2:18766");url.setText(sync.url());l.addView(url);EditText key=new EditText(this);key.setHint("Codice di abbinamento PC");key.setText(sync.token());l.addView(key);
     new AlertDialog.Builder(this).setTitle("Abbinamento PC").setView(l).setPositiveButton("Salva",(d,w)->{try{sync.setup(url.getText().toString().trim().replaceAll("/+$",""),key.getText().toString());toast("Dati PC salvati. Premi Verifica collegamento per controllare la rete.");show();}catch(Exception e){toast(e.getMessage());}}).setNegativeButton("Annulla",null).show();
