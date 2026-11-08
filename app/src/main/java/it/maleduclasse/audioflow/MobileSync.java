@@ -53,7 +53,7 @@ final class MobileSync {
       JSONObject local=store.project(id);
       if(local.optBoolean("dirty",false))continue;
       String localId=MobileStore.str(local,"project_id");
-      if(localId.isEmpty()||r.optInt("revision",0)>local.optInt("revision",-1)){
+      if(localId.isEmpty()||r.optInt("revision",0)>local.optInt("revision",-1)||!r.optString("updated","").equals(local.optString("updated",""))){
         store.importFromPC(download(id));changed++;
       }
     }
