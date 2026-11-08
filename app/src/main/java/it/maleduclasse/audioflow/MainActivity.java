@@ -66,7 +66,7 @@ public final class MainActivity extends Activity {
   }
   private void autoSync(){
     long now=SystemClock.elapsedRealtime();
-    if(sync==null||sync.url().isEmpty()||syncBusy||recorder!=null||editorDirty||!wifiConnected()||
+    if(sync==null||sync.url().isEmpty()||syncBusy||recorder!=null||recordingPending||editorDirty||!wifiConnected()||
        (lastAutoSync>0&&now-lastAutoSync<11000))return;
     lastAutoSync=now;syncBusy=true;
     background(()->{
@@ -435,13 +435,127 @@ public final class MainActivity extends Activity {
     takeDialog.setCancelable(recorder==null);
     takeDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
   }
-  private void startRecord(String lid,boolean provisional){if(recorder!=null){toast("Registrazione in corso");return;}if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC);toast("Autorizza microfono e premi di nuovo Registra");return;}
-    try{recordingLine=lid;recordingProvisional=provisional;recordingFile=new File(store.takeDir(pid(),lid),"take_"+System.currentTimeMillis()+".m4a");recorder=new MediaRecorder();recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioSamplingRate(44100);recorder.setAudioEncodingBitRate(128000);recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();if(recorderButton!=null){recorderButton.setText("■ STOP");recorderButton.setBackground(box(Color.rgb(130,38,53),90,Color.rgb(252,184,190),3));}if(recordingClock!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}toast("Registrazione avviata");}
-    catch(Exception ex){if(recorder!=null){try{recorder.release();}catch(Exception ignored){}}recorder=null;toast("Microfono: "+ex.getMessage());}
+  private void renderRecorderState(){
+    if(recorderButton==null)return;
+    boolean recording=recorder!=null;
+    recorderButton.setText(recording?"■ STOP":"● REC");
+    recorderButton.setTextSize(recording?19:22);
+    recorderButton.setBackground(box(recording?Color.rgb(100,43,56):Color.rgb(198,45,69),
+      90,recording?Color.rgb(255,181,195):Color.rgb(242,129,151),3));
+    recorderButton.setContentDescription(recording?"Interrompi registrazione e ascolta":"Inizia registrazione");
   }
-  private void stopRecord(){if(recorder==null){toast("Nessuna registrazione attiva");return;}boolean saved=false;try{recorder.stop();saved=recordingFile!=null&&recordingFile.length()>0;}catch(Exception ex){toast("Errore durante lo Stop: "+ex.getMessage());}finally{recorder.release();recorder=null;}
-    if(saved){selectedTakeName=recordingFile.getName();if(recordingProvisional)store.setProvisional(pid(),recordingLine,recordingFile.getName(),true);toast("Take salvata immediatamente sul telefono");}else if(recordingFile!=null)recordingFile.delete();
-    if(recordingClock!=null)recordingClock.stop();JSONObject line=MobileStore.byId(active.optJSONArray("lines"),recordingLine);recordingLine="";if(line!=null)showTakeDialog(line);if(saved)ui.postDelayed(this::autoSync,700);
+  private void startRecord(String lid,boolean provisional){
+    if(recorder!=null){toast("Registrazione già in corso");return;}
+    if(recordingPending){toast("Conferma oppure scarta la take precedente");return;}
+    if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+      requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC);
+      toast("Autorizza il microfono e poi premi REC");return;
+    }
+    try{
+      recordingLine=lid;recordingProvisional=provisional;
+      // Pending audio stays outside takes/, so it cannot sync before user acceptance.
+      File pendingDir=new File(getFilesDir(),"pending_takes");pendingDir.mkdirs();
+      recordingFile=new File(pendingDir,"take_"+System.currentTimeMillis()+".m4a");
+      recorder=new MediaRecorder();recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+      recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+      recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+      recorder.setAudioSamplingRate(44100);recorder.setAudioEncodingBitRate(128000);
+      recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();
+      capturedPeaks.clear();ui.removeCallbacks(sampleAmplitude);ui.postDelayed(sampleAmplitude,110);
+      if(recordingClock!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}
+      if(takeDialog!=null)takeDialog.setCancelable(false);
+      renderRecorderState();
+    }catch(Exception ex){
+      ui.removeCallbacks(sampleAmplitude);
+      if(recorder!=null){try{recorder.release();}catch(Exception ignored){}}
+      recorder=null;if(recordingFile!=null)recordingFile.delete();
+      renderRecorderState();toast("Microfono: "+ex.getMessage());
+    }
+  }
+  private void stopRecord(){
+    if(recorder==null){toast("Premi REC per iniziare");renderRecorderState();return;}
+    ui.removeCallbacks(sampleAmplitude);
+    boolean valid=false;
+    try{recorder.stop();valid=recordingFile!=null&&recordingFile.length()>256;}
+    catch(Exception ex){toast("Registrazione non valida: "+ex.getMessage());}
+    finally{recorder.release();recorder=null;renderRecorderState();}
+    if(recordingClock!=null)recordingClock.stop();
+    if(takeDialog!=null)takeDialog.setCancelable(true);
+    if(!valid){
+      if(recordingFile!=null)recordingFile.delete();recordingFile=null;
+      toast("Take non registrata: riprova");return;
+    }
+    recordingPending=true;
+    JSONObject line=MobileStore.byId(active.optJSONArray("lines"),recordingLine);
+    showRecordReview(line);
+  }
+  private View waveformPreview(){
+    final ArrayList<Integer> peaks=new ArrayList<>(capturedPeaks);
+    return new View(this){
+      final android.graphics.Paint paint=new android.graphics.Paint(3);
+      @Override protected void onDraw(android.graphics.Canvas canvas){
+        super.onDraw(canvas);int w=getWidth(),h=getHeight();
+        paint.setColor(Color.rgb(176,139,239));paint.setStrokeWidth(dp(3));paint.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        if(peaks.isEmpty())return;
+        int count=Math.min(70,peaks.size());
+        for(int i=0;i<count;i++){
+          int idx=(int)((long)i*peaks.size()/count);
+          double level=Math.max(0.08,Math.min(1.0,peaks.get(idx)/26000.0));
+          float x=(i+.5f)*w/count;
+          float amplitude=(float)(level*h*.43);
+          canvas.drawLine(x,h/2f-amplitude,x,h/2f+amplitude,paint);
+        }
+      }
+    };
+  }
+  private void completeReview(JSONObject line,boolean accept){
+    if(!recordingPending||recordingFile==null)return;
+    File pending=recordingFile;String lid=recordingLine;
+    if(accept){
+      File dest=new File(store.takeDir(pid(),lid),pending.getName());
+      try{
+        java.nio.file.Files.move(pending.toPath(),dest.toPath());
+        if(recordingProvisional)store.setProvisional(pid(),lid,dest.getName(),true);
+        selectedTakeName=dest.getName();
+        recordingPending=false;recordingFile=null;recordingLine="";
+        if(reviewDialog!=null){reviewDialog.dismiss();reviewDialog=null;}
+        if(line!=null)showTakeDialog(line);
+        ui.postDelayed(this::autoSync,700);
+      }catch(Exception ex){toast("Impossibile confermare la take: "+ex.getMessage());}
+    }else{
+      if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}
+      if(!pending.delete()){toast("Impossibile scartare la take");return;}
+      recordingPending=false;recordingFile=null;recordingLine="";
+      if(reviewDialog!=null){reviewDialog.dismiss();reviewDialog=null;}
+      if(line!=null)showTakeDialog(line);
+    }
+  }
+  private void showRecordReview(JSONObject line){
+    LinearLayout pane=column();pane.setPadding(dp(18),dp(20),dp(18),dp(22));
+    pane.setBackgroundColor(Color.BLACK);
+    TextView heading=label("ASCOLTA LA TUA TAKE",13,Color.rgb(194,174,224),true);
+    heading.setGravity(Gravity.CENTER);pane.addView(heading);
+    TextView content=label(line==null?"":MobileStore.str(line,"text"),18,TEXT,true);
+    content.setGravity(Gravity.CENTER);pane.addView(content);
+    View wave=waveformPreview();
+    LinearLayout.LayoutParams wl=new LinearLayout.LayoutParams(-1,dp(120));wl.setMargins(0,dp(14),0,dp(12));
+    pane.addView(wave,wl);
+    Button listen=btn("▶  Riascolta",Color.rgb(40,38,51),()->{if(recordingFile!=null)play(recordingFile);});
+    pane.addView(listen,new LinearLayout.LayoutParams(-1,dp(52)));
+    LinearLayout choices=row();choices.setGravity(Gravity.CENTER);
+    Button discard=btn("✕",Color.rgb(155,44,62),()->completeReview(line,false));
+    Button accept=btn("✓",Color.rgb(32,126,87),()->completeReview(line,true));
+    discard.setTextSize(30);accept.setTextSize(30);
+    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(74),1);lp.setMargins(dp(7),dp(12),dp(7),0);
+    choices.addView(discard,lp);LinearLayout.LayoutParams p2=new LinearLayout.LayoutParams(0,dp(74),1);
+    p2.setMargins(dp(7),dp(12),dp(7),0);choices.addView(accept,p2);
+    pane.addView(choices);
+    TextView hints=label("SCARTA                                        CONFERMA",11,Color.LTGRAY,false);
+    hints.setGravity(Gravity.CENTER);pane.addView(hints);
+    reviewDialog=new AlertDialog.Builder(this).setView(pane).create();
+    reviewDialog.setCancelable(false);reviewDialog.show();
+    reviewDialog.getWindow().setBackgroundDrawableResource(android.R.color.black);
+    reviewDialog.getWindow().setLayout(-1,-2);
   }
   private void play(File audio){if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}try{player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());player.prepare();player.start();player.setOnCompletionListener(p->{p.release();player=null;});}catch(Exception ex){toast("Impossibile riprodurre: "+ex.getMessage());}}
   private void renderSync(){section("Sincronizzazione con Windows",YELLOW);note("La Wi-Fi privata sincronizza copioni, cast e take tra telefono e PC. Le modifiche offline restano locali finché non viene stabilita la connessione.");
