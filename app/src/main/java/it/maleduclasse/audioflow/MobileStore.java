@@ -131,7 +131,16 @@ final class MobileStore {
   }
   void importFromPC(JSONObject full){String pid=str(full,"project_id");JSONObject current=project(pid);
     if(current.optBoolean("dirty",false))throw new IllegalStateException("Ci sono modifiche locali: sincronizzale o esegui una copia prima di sostituirle");
-    JSONObject newCast=obj();put(newCast,"actors",full.optJSONArray("actors"));put(newCast,"characters",full.optJSONArray("characters"));write(new File(base,"cast.json"),newCast);
+    // Never replace the shared cast while downloading one episode: MobileSync has a
+    // separate versioned transaction for cast changes. A manual import into an empty
+    // mobile library may initialize it, without overwriting an existing cast.
+    JSONObject existingCast=cast();JSONArray actors=existingCast.optJSONArray("actors"),chars=existingCast.optJSONArray("characters");
+    if((actors==null||actors.length()==0)&&(chars==null||chars.length()==0)){
+      JSONObject initialCast=obj();
+      put(initialCast,"actors",full.optJSONArray("actors")==null?array():full.optJSONArray("actors"));
+      put(initialCast,"characters",full.optJSONArray("characters")==null?array():full.optJSONArray("characters"));
+      applyRemoteCast(initialCast);
+    }
     put(full,"dirty",false);saveProject(full);
   }
   JSONObject takeMeta(String pid,String lid){return read(new File(takeDir(pid,lid),"metadata.json"));}
