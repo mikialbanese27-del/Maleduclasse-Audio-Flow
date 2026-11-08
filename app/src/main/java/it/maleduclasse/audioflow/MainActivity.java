@@ -206,20 +206,76 @@ public final class MainActivity extends Activity {
     }
     body.addView(label("Completate: "+ready+" / "+total+" battute",16,YELLOW,true));body.addView(cells);
   }
-  private void showTakeDialog(JSONObject line){if(takeDialog!=null&&takeDialog.isShowing())takeDialog.dismiss();String lid=MobileStore.str(line,"id");selectedLine=lid;
+
+  private void showTakeDialog(JSONObject line){
+    if(takeDialog!=null&&takeDialog.isShowing())takeDialog.dismiss();
+    String lid=MobileStore.str(line,"id");selectedLine=lid;
     ScrollView scroll=new ScrollView(this);LinearLayout pane=column();pad(pane);scroll.addView(pane);
-    pane.addView(label(MobileStore.characterName(line,cast)+" · "+MobileStore.actorName(line,active,cast),17,PURPLE,true));pane.addView(label(MobileStore.str(line,"text"),19,TEXT,false));
-    LinearLayout tools=actionRow();tools.addView(btn(recorder==null?"● Registra":"Registrazione in corso",RED,()->{if(recorder!=null){toast("Registrazione già attiva");return;}startRecord(lid,false);}));
-    tools.addView(btn("■ Stop",GREEN,()->stopRecord()));tools.addView(btn("Importa audio",PANEL,()->{Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("audio/*");startActivityForResult(intent,IMPORT_TAKE);}));pane.addView(tools);
-    recordingClock=new Chronometer(this);recordingClock.setTextColor(YELLOW);if(recorder!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}pane.addView(recordingClock);
-    pane.addView(label("Registrazioni salvate sul telefono:",14,Color.LTGRAY,true));
-    File[] files=store.takes(pid(),lid);if(files.length==0)pane.addView(label("Nessuna take: registra qui la prima battuta.",15,Color.rgb(247,170,170),false));
-    for(File file:files){LinearLayout r=column();r.setPadding(dp(5),dp(5),dp(5),dp(5));r.setBackground(box(PANEL,9,Color.rgb(67,58,83),1));
-      String name=file.getName(),prefix=store.isPreferred(pid(),lid,name)?"★ ":"";boolean prov=store.isProvisional(pid(),lid,name);r.addView(label(prefix+name+(prov?"  · provvisoria":""),12,prov?YELLOW:TEXT,false));
-      LinearLayout buttons=actionRow();buttons.addView(btn("▶",GREEN,()->play(file)));buttons.addView(btn("★",PURPLE,()->{store.setPreferred(pid(),lid,name);showTakeDialog(line);}));buttons.addView(btn(prov?"Definitiva":"Provvisoria",BROWN,()->{store.setProvisional(pid(),lid,name,!prov);showTakeDialog(line);}));
-      buttons.addView(btn("Elimina",RED,()->confirm("Eliminare la take?","Il file sarà eliminato dal telefono. Se era sincronizzato, sarà rimosso anche dal PC alla prossima sincronizzazione.","Elimina",()->{if(file.delete()){store.queueDeletion(pid(),lid,name);showTakeDialog(line);toast("Take eliminata");}else toast("Eliminazione fallita");})));r.addView(buttons);pane.addView(r);
+    pane.addView(label(MobileStore.characterName(line,cast)+" · "+MobileStore.actorName(line,active,cast),14,PURPLE,true));
+    TextView lineText=label(MobileStore.str(line,"text"),20,TEXT,true);
+    lineText.setPadding(dp(14),dp(16),dp(14),dp(16));
+    lineText.setBackground(box(Color.rgb(29,26,44),13,Color.rgb(70,57,89),1));
+    pane.addView(lineText);
+    TextView heading=label("REGISTRATORE",12,YELLOW,true);heading.setGravity(Gravity.CENTER);pane.addView(heading);
+    recordingClock=new Chronometer(this);recordingClock.setTextColor(TEXT);
+    recordingClock.setTextSize(32);recordingClock.setGravity(Gravity.CENTER);
+    recordingClock.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);
+    if(recorder!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}
+    pane.addView(recordingClock,new LinearLayout.LayoutParams(-1,dp(70)));
+    LinearLayout center=row();center.setGravity(Gravity.CENTER);
+    recorderButton=new Button(this);recorderButton.setAllCaps(false);
+    recorderButton.setText(recorder==null?"● REC":"■ STOP");
+    recorderButton.setTextColor(Color.WHITE);recorderButton.setTextSize(22);
+    recorderButton.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+    recorderButton.setBackground(box(recorder==null?Color.rgb(205,46,66):Color.rgb(130,38,53),90,Color.rgb(252,184,190),3));
+    recorderButton.setOnClickListener(v->{if(recorder==null)startRecord(lid,false);else stopRecord();});
+    LinearLayout.LayoutParams recLp=new LinearLayout.LayoutParams(dp(132),dp(132));
+    recLp.setMargins(0,dp(5),0,dp(8));center.addView(recorderButton,recLp);pane.addView(center);
+    TextView recordHint=label("Tocca REC per una nuova take · STOP salva subito",12,Color.LTGRAY,false);
+    recordHint.setGravity(Gravity.CENTER);pane.addView(recordHint);
+    LinearLayout shortcuts=actionRow();shortcuts.setGravity(Gravity.CENTER);
+    shortcuts.addView(btn("＋ Importa file",PANEL,()->{
+      Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+      intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("audio/*");
+      startActivityForResult(intent,IMPORT_TAKE);
+    }));
+    shortcuts.addView(btn("↻ Rifai",PURPLE,()->{
+      if(recorder!=null)toast("Ferma prima la registrazione");else startRecord(lid,false);
+    }));
+    pane.addView(shortcuts);
+    File[] files=store.takes(pid(),lid);
+    pane.addView(label("TAKE SALVATE · "+files.length,13,YELLOW,true));
+    if(files.length==0)pane.addView(label("Nessuna take. Inizia dal tasto rosso.",14,Color.rgb(240,160,163),false));
+    for(int index=files.length-1;index>=0;index--){
+      File file=files[index];String filename=file.getName();
+      boolean preferred=store.isPreferred(pid(),lid,filename);
+      boolean provisional=store.isProvisional(pid(),lid,filename);
+      boolean selected=filename.equals(selectedTakeName)||(selectedTakeName.isEmpty()&&index==files.length-1);
+      LinearLayout take=column();take.setPadding(dp(7),dp(6),dp(7),dp(6));
+      take.setBackground(box(selected?Color.rgb(60,48,83):PANEL,11,selected?YELLOW:Color.rgb(72,60,87),selected?2:1));
+      take.addView(label("Take "+(index+1)+(preferred?"  ★ PREFERITA":"")+(provisional?"  · PROVVISORIA":""),13,provisional?YELLOW:TEXT,true));
+      take.setOnClickListener(v->{selectedTakeName=filename;showTakeDialog(line);});
+      HorizontalScrollView scroller=new HorizontalScrollView(this);scroller.setHorizontalScrollBarEnabled(false);
+      LinearLayout tools=actionRow();
+      tools.addView(btn("▶",GREEN,()->{selectedTakeName=filename;play(file);}));
+      tools.addView(btn(preferred?"★ Preferita":"☆ Preferita",PURPLE,()->{
+        selectedTakeName=filename;store.setPreferred(pid(),lid,filename);showTakeDialog(line);
+      }));
+      tools.addView(btn(provisional?"✓ Provvisoria":"◌ Provvisoria",BROWN,()->{
+        selectedTakeName=filename;store.setProvisional(pid(),lid,filename,!provisional);showTakeDialog(line);
+      }));
+      tools.addView(btn("✕ Elimina",RED,()->confirm("Eliminare la take?",
+        "La registrazione sarà eliminata dal telefono; il PC sarà aggiornato alla sincronizzazione.",
+        "Elimina",()->{if(file.delete()){store.queueDeletion(pid(),lid,filename);selectedTakeName="";showTakeDialog(line);toast("Take eliminata");}
+          else toast("Eliminazione fallita");})));
+      scroller.addView(tools);take.addView(scroller);
+      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(5),0,dp(4));pane.addView(take,lp);
     }
-    takeDialog=new AlertDialog.Builder(this).setTitle("Battuta · take").setView(scroll).setPositiveButton("Chiudi",(d,w)->{recordingClock=null;show();}).create();takeDialog.setOnDismissListener(d->{if(recordingClock!=null){recordingClock.stop();recordingClock=null;}});takeDialog.show();
+    takeDialog=new AlertDialog.Builder(this).setTitle("Doppiaggio · Battuta").setView(scroll)
+      .setPositiveButton("Chiudi",(dialog,which)->{recordingClock=null;recorderButton=null;show();}).create();
+    takeDialog.setOnDismissListener(dialog->{if(recordingClock!=null){recordingClock.stop();recordingClock=null;}recorderButton=null;});
+    takeDialog.show();
+    takeDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
   }
   private void startRecord(String lid,boolean provisional){if(recorder!=null){toast("Registrazione in corso");return;}if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC);toast("Autorizza microfono e premi di nuovo Registra");return;}
     try{recordingLine=lid;recordingProvisional=provisional;recordingFile=new File(store.takeDir(pid(),lid),"take_"+System.currentTimeMillis()+".m4a");recorder=new MediaRecorder();recorder.setAudioSource(MediaRecorder.AudioSource.MIC);recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);recorder.setAudioSamplingRate(44100);recorder.setAudioEncodingBitRate(128000);recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();if(recorderButton!=null){recorderButton.setText("■ STOP");recorderButton.setBackground(box(Color.rgb(130,38,53),90,Color.rgb(252,184,190),3));}if(recordingClock!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}toast("Registrazione avviata");}
