@@ -663,28 +663,32 @@ public final class MainActivity extends Activity {
       boolean preferred=store.isPreferred(pid(),lid,filename),provisional=store.isProvisional(pid(),lid,filename);
       LinearLayout take=column();take.setPadding(dp(10),dp(5),dp(8),dp(5));
       take.setBackground(box(Color.rgb(37,34,49),12,Color.rgb(64,54,78),1));
-      LinearLayout header=row();
-      header.addView(label("TAKE "+(index+1),12,Color.rgb(187,184,200),true),new LinearLayout.LayoutParams(0,-2,1));
-      Button remove=btn("✕",Color.rgb(58,37,48),()->{});
-      remove.setTextColor(Color.rgb(244,109,126));remove.setTextSize(17);
-      remove.setContentDescription("Elimina take");
-      remove.setOnClickListener(v->confirm("Elimina take?","La registrazione sarà rimossa dal telefono e la cancellazione sincronizzata.","Elimina",()->{
-        if(file.delete()){store.queueDeletion(pid(),lid,filename);selectedTakeName="";showTakeDialog(line);}
-        else toast("Impossibile eliminare il file");
-      }));header.addView(remove);take.addView(header);
-      LinearLayout controls=row();
-      Button play=btn("▶",Color.rgb(56,57,73),()->play(file));play.setTextSize(19);
-      controls.addView(play,new LinearLayout.LayoutParams(0,dp(47),1));
-      Button star=btn(preferred?"★":"☆",preferred?Color.rgb(78,61,106):Color.rgb(56,57,73),()->{
+      take.addView(label("TAKE "+(index+1),12,Color.rgb(211,202,230),true));
+      LinearLayout tools=row();tools.setGravity(Gravity.CENTER_VERTICAL);
+      Button playButton=iconButton("▶",YELLOW,()->{});
+      playButton.setOnClickListener(v->playTake(file,playButton));
+      playButton.setContentDescription("Riproduci o metti in pausa");
+      Button star=iconButton(preferred?"★":"☆",YELLOW,()->{
         store.setPreferred(pid(),lid,filename);showTakeDialog(line);
-      });star.setTextSize(22);star.setContentDescription("Contrassegna come preferita");
-      controls.addView(star,new LinearLayout.LayoutParams(0,dp(47),1));
-      Button provisionalButton=btn(provisional?"◷":"◴",provisional?Color.rgb(78,61,106):Color.rgb(56,57,73),()->{
+      });
+      star.setContentDescription("Take preferita");
+      Button provisionalButton=iconButton(provisional?"◷":"◴",PURPLE,()->{
         store.setProvisional(pid(),lid,filename,!provisional);showTakeDialog(line);
-      });provisionalButton.setTextSize(23);
-      provisionalButton.setContentDescription(provisional?"Take provvisoria: tocca per cambiare":"Contrassegna provvisoria");
-      controls.addView(provisionalButton,new LinearLayout.LayoutParams(0,dp(47),1));
-      take.addView(controls);
+      });
+      provisionalButton.setContentDescription("Take provvisoria");
+      Button remove=iconButton("✕",Color.rgb(249,113,143),()->confirm(
+        "Eliminare la take?","La registrazione verrà eliminata dal telefono.","Elimina",()->{
+          if(file.delete()){store.queueDeletion(pid(),lid,filename);selectedTakeName="";showTakeDialog(line);}
+          else toast("Impossibile eliminare il file");
+        }));
+      remove.setContentDescription("Elimina take");
+      Button[] buttons={playButton,star,provisionalButton,remove};
+      for(Button button:buttons){
+        LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(0,dp(49),1);
+        bp.setMargins(dp(3),dp(6),dp(3),dp(2));
+        tools.addView(button,bp);
+      }
+      take.addView(tools);
       LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
       lp.setMargins(0,dp(4),0,dp(7));pane.addView(take,lp);
     }
