@@ -47,6 +47,8 @@ public final class MainActivity extends Activity {
   private MediaRecorder recorder;private MediaPlayer player;private File recordingFile;private String recordingLine="";private boolean recordingProvisional=false;private boolean syncBusy=false;
   private AlertDialog takeDialog;private Chronometer recordingClock;private long lastAutoSync=0L;
   private Button recorderButton;private String selectedTakeName="";
+  private Button dictationButton;private android.speech.SpeechRecognizer speechRecognizer;
+  private boolean dictationActive=false;
 
   @Override public void onCreate(Bundle state){super.onCreate(state);getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
     // Own the system-bar insets rather than rendering behind clock / navigation buttons.
@@ -242,19 +244,21 @@ public final class MainActivity extends Activity {
     LinearLayout scriptTop=row();
     TextView scriptHeading=label("Sceneggiatura",19,TEXT,true);
     scriptTop.addView(scriptHeading,new LinearLayout.LayoutParams(0,-2,1));
-    Button save=btn("✓ Salva",GREEN,()->{if(saveEditor())toast("Copione salvato");});
-    scriptTop.addView(save);
+
     Button menuButton=btn("⋮",PANEL,()->{});menuButton.setTextSize(23);
     menuButton.setOnClickListener(v->{
       PopupMenu menu=new PopupMenu(this,v);
-      menu.getMenu().add("Dettatura").setOnMenuItemClickListener(item->{dictate();return true;});
+
       menu.getMenu().add("Importa Word").setOnMenuItemClickListener(item->{importWord();return true;});
       menu.getMenu().add("Controlla battute").setOnMenuItemClickListener(item->{
         if(editor!=null)showValidation(editor.getText().toString());return true;
       });
       menu.getMenu().add("Statistiche").setOnMenuItemClickListener(item->{showStats();return true;});
       menu.show();
-    });scriptTop.addView(menuButton);body.addView(scriptTop);
+    });scriptTop.addView(menuButton);
+    Button mic=btn("🎙",PANEL,()->toggleDictation());mic.setTextSize(21);
+    mic.setContentDescription("Dettatura senza cambiare schermata");
+    dictationButton=mic;scriptTop.addView(mic);body.addView(scriptTop);
 
     editor=new EditText(this);editor.setTextColor(TEXT);editor.setHintTextColor(Color.GRAY);editor.setHint("/scena Scena 1\n@Personaggio\nScrivi qui la battuta...");editor.setTextSize(17);
     editor.setGravity(Gravity.TOP);editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
@@ -262,7 +266,11 @@ public final class MainActivity extends Activity {
     draft=MobileStore.str(active,"script");editor.setText(draft);editor.setSelection(editor.length());body.addView(editor,new LinearLayout.LayoutParams(-1,-2));applySyntax();
     editor.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int a,int count,int after){}public void onTextChanged(CharSequence s,int start,int before,int count){if(!styling)editorDirty=!s.toString().equals(MobileStore.str(active,"script"));}
       public void afterTextChanged(Editable e){if(styling)return;if(stylingJob!=null)ui.removeCallbacks(stylingJob);stylingJob=()->{applySyntax();characterSuggestions();};ui.postDelayed(stylingJob,190);}});
-    // Editing utilities are available in the overflow menu beside Save.
+    LinearLayout saveRow=row();saveRow.setGravity(Gravity.CENTER);
+    Button save=btn("✓ Salva sceneggiatura",PURPLE,()->{if(saveEditor())toast("Copione salvato");});
+    saveRow.addView(save,new LinearLayout.LayoutParams(dp(220),dp(54)));
+    LinearLayout.LayoutParams rowParams=new LinearLayout.LayoutParams(-1,-2);
+    rowParams.setMargins(0,dp(14),0,dp(8));body.addView(saveRow,rowParams);
   }
 
   private void addScriptPresetToolbar(){
@@ -301,12 +309,22 @@ public final class MainActivity extends Activity {
   }
   private void insertCharacter(JSONObject character){
     if(editor==null)return;
-    insertScriptToken("@"+MobileStore.str(character,"name"));
+    String who="@"+MobileStore.str(character,"name");
+    insertScriptToken(who+"\n");
     String key="used_"+pid()+"_"+MobileStore.str(character,"id");
     android.content.SharedPreferences prefs=getPreferences(0);
     prefs.edit().putInt(key,prefs.getInt(key,0)+1).apply();
+    if(characterShortcutRow!=null)populateCharacterShortcuts(characterShortcutRow);
   }
+  private LinearLayout characterShortcutRow;
   private void addCharacterShortcuts(){
+    JSONArray chars=cast.optJSONArray("characters");if(chars==null||chars.length()==0)return;
+    HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);
+    characterShortcutRow=row();characterShortcutRow.setPadding(dp(4),dp(2),dp(4),dp(2));
+    populateCharacterShortcuts(characterShortcutRow);
+    strip.addView(characterShortcutRow);root.addView(strip);
+  }
+  private void populateCharacterShortcuts(LinearLayout row){
     JSONArray chars=cast.optJSONArray("characters");if(chars==null||chars.length()==0)return;
     ArrayList<JSONObject> sorted=new ArrayList<>();
     for(int i=0;i<chars.length();i++){JSONObject ch=chars.optJSONObject(i);if(ch!=null)sorted.add(ch);}
@@ -314,15 +332,13 @@ public final class MainActivity extends Activity {
     sorted.sort((x,y)->Integer.compare(
       prefs.getInt("used_"+pid()+"_"+MobileStore.str(y,"id"),0),
       prefs.getInt("used_"+pid()+"_"+MobileStore.str(x,"id"),0)));
-    HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);
-    LinearLayout row=row();row.setPadding(dp(4),dp(2),dp(4),dp(2));
+    row.removeAllViews();
     for(JSONObject character:sorted){
       View face=characterFace(character,40);
       LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(dp(40),dp(40));fp.setMargins(dp(3),0,dp(9),0);
       row.addView(face,fp);face.setContentDescription("Inserisci "+MobileStore.str(character,"name"));
       face.setOnClickListener(v->{insertCharacter(character);});
     }
-    strip.addView(row);root.addView(strip);
   }
   private void insertScriptToken(String token){
     if(editor==null)return;
