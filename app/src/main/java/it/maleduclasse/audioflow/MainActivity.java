@@ -437,11 +437,18 @@ public final class MainActivity extends Activity {
     JSONArray actors=cast.optJSONArray("actors");for(int i=0;actors!=null&&i<actors.length();i++){JSONObject a=actors.optJSONObject(i);if(a==null)continue;LinearLayout panel=card(PANEL);LinearLayout r=actionRow();TextView title=label("🎙 "+MobileStore.str(a,"name"),16,TEXT,true);r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.addView(btn("Rinomina",PANEL,()->askText("Rinomina doppiatore",MobileStore.str(a,"name"),name->{MobileStore.put(a,"name",name);store.saveCast(cast);show();})));r.addView(btn("Elimina",RED,()->deleteCastActor(a)));panel.addView(r);}
     addButton(body,"＋ Aggiungi personaggio",PURPLE,()->askText("Nome nuovo personaggio","",s->{JSONArray list=cast.optJSONArray("characters");if(MobileStore.byName(list,s)!=null){toast("Personaggio già presente");return;}list.put(MobileStore.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s),"actor_id",JSONObject.NULL));store.saveCast(cast);show();}));
     JSONArray characters=cast.optJSONArray("characters");for(int i=0;characters!=null&&i<characters.length();i++){JSONObject ch=characters.optJSONObject(i);if(ch==null)continue;LinearLayout panel=card(PANEL);LinearLayout identity=row();
-      identity.addView(characterFace(ch,44),new LinearLayout.LayoutParams(dp(44),dp(44)));
+      View face=characterFace(ch,44);face.setOnClickListener(v->chooseAvatar(ch));
+      face.setContentDescription("Tocca per cambiare foto di "+MobileStore.str(ch,"name"));
+      identity.addView(face,new LinearLayout.LayoutParams(dp(44),dp(44)));
       identity.addView(label("@"+MobileStore.str(ch,"name"),16,TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
-      identity.addView(btn("▧",PANEL,()->chooseAvatar(ch)));panel.addView(identity);
+      Button pencil=btn("✎",PANEL,()->askText("Rinomina personaggio",
+        MobileStore.str(ch,"name"),name->{MobileStore.put(ch,"name",name);store.saveCast(cast);show();}));
+      pencil.setContentDescription("Rinomina personaggio");
+      identity.addView(pencil);panel.addView(identity);
       JSONObject actor=MobileStore.byId(actors,MobileStore.str(ch,"actor_id"));panel.addView(label("Doppiatore base: "+(actor==null?"Non assegnato":MobileStore.str(actor,"name")),13,Color.LTGRAY,false));
-      LinearLayout actions=actionRow();actions.addView(btn("Rinomina",PANEL,()->askText("Rinomina personaggio",MobileStore.str(ch,"name"),name->{MobileStore.put(ch,"name",name);store.saveCast(cast);show();})));actions.addView(btn("Assegna voce",GREEN,()->chooseActor(ch,null)));if(active!=null)actions.addView(btn("Voce episodio",PURPLE,()->chooseActor(ch,active)));actions.addView(btn("Elimina",RED,()->deleteCastCharacter(ch)));panel.addView(actions);
+      LinearLayout actions=actionRow();
+      actions.addView(btn("Assegna voce",PURPLE,()->chooseActor(ch,null)));
+      actions.addView(btn("✕",RED,()->deleteCastCharacter(ch)));panel.addView(actions);
     }
   }
   private static JSONArray withoutId(JSONArray source,String id){
@@ -506,19 +513,23 @@ public final class MainActivity extends Activity {
       }show();
     }).show();}
   private void openDubbingFilter(View anchor){
-    ArrayList<String> options=new ArrayList<>();
-    options.add("Tutti");
-    JSONArray lines=active==null?null:active.optJSONArray("lines");
-    if(lines!=null)for(int i=0;i<lines.length();i++){
-      JSONObject line=lines.optJSONObject(i);if(line==null)continue;
-      String actor=MobileStore.actorName(line,active,cast);
-      String character=MobileStore.characterName(line,cast);
-      if(!options.contains("Doppiatore: "+actor))options.add("Doppiatore: "+actor);
-      if(!options.contains("Personaggio: "+character))options.add("Personaggio: "+character);
-    }
-    new AlertDialog.Builder(this).setTitle("Filtra le battute").setItems(options.toArray(new String[0]),(d,index)->{
-      actorFilter=options.get(index);show();
-    }).setNegativeButton("Annulla",null).show();
+    String[] modes={"Doppiatore","Personaggio","Mostra tutti"};
+    new AlertDialog.Builder(this).setTitle("Filtra per")
+      .setItems(modes,(dialog,which)->{
+        if(which==2){actorFilter="Tutti";show();return;}
+        boolean byActor=which==0;
+        ArrayList<String> names=new ArrayList<>();
+        JSONArray lines=active==null?null:active.optJSONArray("lines");
+        if(lines!=null)for(int i=0;i<lines.length();i++){
+          JSONObject l=lines.optJSONObject(i);if(l==null)continue;
+          String name=byActor?MobileStore.actorName(l,active,cast):MobileStore.characterName(l,cast);
+          if(!names.contains(name))names.add(name);
+        }
+        Collections.sort(names);
+        new AlertDialog.Builder(this).setTitle(modes[which]).setItems(names.toArray(new String[0]),(d,index)->{
+          actorFilter=modes[which]+": "+names.get(index);show();
+        }).setNegativeButton("Indietro",(d,w)->openDubbingFilter(anchor)).show();
+      }).setNegativeButton("Annulla",null).show();
   }
   private boolean lineMatchesFilter(JSONObject line){
     if(actorFilter.equals("Tutti"))return true;
