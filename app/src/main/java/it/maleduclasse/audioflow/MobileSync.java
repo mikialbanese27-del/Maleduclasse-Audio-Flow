@@ -123,10 +123,14 @@ final class MobileSync {
       String pid=MobileStore.str(project,"project_id");
       if(project.optBoolean("dirty",false)){
         JSONObject payload=MobileStore.obj();MobileStore.put(payload,"project_id",pid);MobileStore.put(payload,"title",MobileStore.str(project,"title"));MobileStore.put(payload,"script",MobileStore.str(project,"script"));MobileStore.put(payload,"base_revision",project.optInt("revision",0));
+        String baseUpdated=project.optString("updated","");
+        if(!baseUpdated.isEmpty())MobileStore.put(payload,"base_updated",baseUpdated);
         JSONObject cast=store.cast();MobileStore.put(payload,"actors",cast.optJSONArray("actors"));MobileStore.put(payload,"characters",cast.optJSONArray("characters"));
         MobileStore.put(payload,"overrides",project.optJSONArray("overrides")==null?MobileStore.array():project.optJSONArray("overrides"));MobileStore.put(payload,"lines",project.optJSONArray("lines")==null?MobileStore.array():project.optJSONArray("lines"));
         JSONObject accepted=post("/api/sync/projects/upsert",payload);
-        MobileStore.put(project,"revision",accepted.getInt("revision"));MobileStore.put(project,"dirty",false);store.saveProject(project);result.projects++;
+        MobileStore.put(project,"revision",accepted.getInt("revision"));
+        MobileStore.put(project,"updated",accepted.optString("updated",""));
+        MobileStore.put(project,"dirty",false);store.saveProject(project);result.projects++;
       }
       int changesBefore=result.projects+result.takes;
       // Deletions first, so a deleted take cannot reappear as an older preferred.
