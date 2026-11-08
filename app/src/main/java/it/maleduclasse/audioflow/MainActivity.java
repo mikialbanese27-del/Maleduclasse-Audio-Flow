@@ -121,7 +121,7 @@ public final class MainActivity extends Activity {
     root=column();root.setBackgroundColor(BG);setContentView(root);
     LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
     header.setPadding(dp(12),dp(5),dp(10),dp(5));header.setBackgroundColor(Color.rgb(26,23,36));
-    TextView brand=label("◉",30,PURPLE,true);brand.setGravity(Gravity.CENTER);
+    View brand=BrandLogo.view(this);
     header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
     header.addView(brand,new LinearLayout.LayoutParams(dp(50),dp(51)));
     header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
@@ -138,13 +138,23 @@ public final class MainActivity extends Activity {
     body=column();body.setPadding(dp(12),dp(6),dp(12),dp(20));scroll.addView(body);
     switch(page){case "Progetti":renderProjects();break;case "Sceneggiatura":renderScript();break;
       case "Doppiaggio":renderDubbing();break;case "⚙ Cast":renderCast();break;default:renderSync();}
-    if(!page.equals("Sceneggiatura")){
+    {
       LinearLayout bottom=row();bottom.setGravity(Gravity.CENTER);
       bottom.setPadding(dp(6),dp(5),dp(6),dp(7));bottom.setBackgroundColor(Color.rgb(26,23,36));
       bottom.addView(navButton("▦","Progetti","Progetti"),new LinearLayout.LayoutParams(0,dp(60),1));
       bottom.addView(navButton("✎","Scrivi","Sceneggiatura"),new LinearLayout.LayoutParams(0,dp(60),1));
       bottom.addView(navButton("◉","Doppiaggio","Doppiaggio"),new LinearLayout.LayoutParams(0,dp(60),1));
       root.addView(bottom);
+      final View navBar=bottom;
+      final View observed=root;
+      observed.getViewTreeObserver().addOnGlobalLayoutListener(()->{
+        android.graphics.Rect visible=new android.graphics.Rect();
+        observed.getWindowVisibleDisplayFrame(visible);
+        int height=observed.getRootView().getHeight();
+        boolean keyboard=height-visible.bottom>dp(160);
+        int desired=keyboard?View.GONE:View.VISIBLE;
+        if(navBar.getVisibility()!=desired)navBar.setVisibility(desired);
+      });
     }
   }
   private void openPage(String target){if(editor!=null&&editorDirty){new AlertDialog.Builder(this).setTitle("Sceneggiatura modificata").setMessage("Salvare il copione sul telefono prima di uscire?")
@@ -677,6 +687,7 @@ public final class MainActivity extends Activity {
     addButton(body,"✓ Verifica collegamento reale al PC",GREEN,()->background(()->{
       try{
         JSONObject status=sync.state();runOnUiThread(()->{
+          pcOnline=true;updateConnectionDot();
           lastSync="PC raggiungibile · "+status.optJSONArray("projects").length()+" episodi disponibili";
           toast(lastSync);if(page.equals("Sincronizza"))show();
         });
@@ -692,8 +703,9 @@ public final class MainActivity extends Activity {
     new AlertDialog.Builder(this).setTitle("Abbinamento PC").setView(l).setPositiveButton("Salva",(d,w)->{try{sync.setup(url.getText().toString().trim().replaceAll("/+$",""),key.getText().toString());toast("Dati PC salvati. Premi Verifica collegamento per controllare la rete.");show();}catch(Exception e){toast(e.getMessage());}}).setNegativeButton("Annulla",null).show();
   }
   private void background(Runnable run){new Thread(run,"maf-mobile-sync").start();}
-  private void error(Exception ex){runOnUiThread(()->{lastSync=ex.getMessage();toast("Operazione interrotta: "+ex.getMessage());if(page.equals("Sincronizza"))show();});}
-  private void syncAll(){if(syncBusy){toast("Sincronizzazione già in corso");return;}syncBusy=true;lastSync="Invio in corso...";toast(lastSync);background(()->{try{MobileSync.Result result=sync.synchronizeAll();runOnUiThread(()->{syncBusy=false;lastSync="Completata: "+result.message();show();toast(lastSync);});}catch(Exception ex){syncBusy=false;error(ex);}});}
+  private void error(Exception ex){runOnUiThread(()->{pcOnline=false;updateConnectionDot();lastSync=ex.getMessage();toast("Operazione interrotta: "+ex.getMessage());if(page.equals("Sincronizza"))show();});}
+  private void syncAll(){if(syncBusy){toast("Sincronizzazione già in corso");return;}syncBusy=true;lastSync="Invio in corso...";toast(lastSync);background(()->{try{MobileSync.Result result=sync.synchronizeAll();runOnUiThread(()->{syncBusy=false;pcOnline=true;updateConnectionDot();
+      lastSync="Completata: "+result.message();show();toast(lastSync);});}catch(Exception ex){syncBusy=false;error(ex);}});}
   private void chooseDesktopProject(){background(()->{try{JSONObject state=sync.state();JSONArray projects=state.getJSONArray("projects");String[] choices=new String[projects.length()];String[] ids=new String[choices.length];for(int i=0;i<projects.length();i++){JSONObject p=projects.getJSONObject(i);ids[i]=p.getString("id");choices[i]=p.getString("title");}
     runOnUiThread(()->new AlertDialog.Builder(this).setTitle("Importa episodio dal PC").setItems(choices,(d,which)->background(()->{try{JSONObject full=sync.download(ids[which]);runOnUiThread(()->{try{store.importFromPC(full);cast=store.cast();setProject(store.project(ids[which]));toast("Progetto importato sul telefono");}catch(Exception ex){toast(ex.getMessage());}});}catch(Exception ex){error(ex);}})).setNegativeButton("Annulla",null).show());
     }catch(Exception ex){error(ex);}});}
