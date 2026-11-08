@@ -128,6 +128,7 @@ final class MobileSync {
         JSONObject accepted=post("/api/sync/projects/upsert",payload);
         MobileStore.put(project,"revision",accepted.getInt("revision"));MobileStore.put(project,"dirty",false);store.saveProject(project);result.projects++;
       }
+      int changesBefore=result.projects+result.takes;
       // Deletions first, so a deleted take cannot reappear as an older preferred.
       JSONArray deleted=project.optJSONArray("deleted_takes");
       if(deleted!=null){for(int i=0;i<deleted.length();i++){
@@ -145,10 +146,18 @@ final class MobileSync {
           String uploadId=lid+"_"+f.getName();boolean isPreferred=f.getName().equals(preferred);boolean provisional=store.isProvisional(pid,lid,f.getName());
           if(!known.contains(uploadId)){upload(pid,lid,f,provisional,isPreferred);known.add(uploadId);result.takes++;}
           JSONObject state=MobileStore.obj();MobileStore.put(state,"device_id",deviceId());MobileStore.put(state,"upload_id",uploadId);MobileStore.put(state,"preferred",isPreferred);MobileStore.put(state,"provisional",provisional);
-          post("/api/sync/projects/"+pid+"/take-state",state);
+          String stateKey="take_state_"+pid+"_"+uploadId;
+          String signature=isPreferred+":"+provisional;
+          if(!signature.equals(prefs.getString(stateKey,""))){
+            post("/api/sync/projects/"+pid+"/take-state",state);
+            prefs.edit().putString(stateKey,signature).apply();
+          }
         }
       }
-      JSONObject assembled=post("/api/sync/projects/"+pid+"/assemble",MobileStore.obj());result.assembled+=assembled.optInt("inserted",0);
+      if(result.projects+result.takes>changesBefore){
+        JSONObject assembled=post("/api/sync/projects/"+pid+"/assemble",MobileStore.obj());
+        result.assembled+=assembled.optInt("inserted",0);
+      }
     }
     result.receivedProjects=pullProjects();
     result.receivedTakes=pullTakes();
