@@ -601,11 +601,6 @@ public final class MainActivity extends Activity {
     LinearLayout top=row();
     TextView who=label(MobileStore.characterName(line,cast),15,Color.rgb(194,176,236),true);
     top.addView(who,new LinearLayout.LayoutParams(0,-2,1));
-    Button close=btn("×",Color.rgb(40,36,51),()->{
-      if(recorder!=null||recordingPending){toast("Completa prima la registrazione");return;}
-      if(takeDialog!=null)takeDialog.dismiss();show();
-    });close.setTextSize(22);close.setContentDescription("Chiudi registratore");
-    top.addView(close);
     Button more=btn("⋮",Color.rgb(40,36,51),()->{});more.setTextSize(23);
     more.setOnClickListener(v->{
       PopupMenu menu=new PopupMenu(this,v);
@@ -623,7 +618,7 @@ public final class MainActivity extends Activity {
     recordingClock.setTextColor(TEXT);recordingClock.setTextSize(29);
     recordingClock.setTypeface(Typeface.MONOSPACE,Typeface.NORMAL);
     if(recorder!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}
-    LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,dp(65));cp.setMargins(0,dp(8),0,0);
+    LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,dp(76));cp.setMargins(0,dp(18),0,dp(15));
     pane.addView(recordingClock,cp);
     LinearLayout center=row();center.setGravity(Gravity.CENTER);
     recorderButton=new Button(this);recorderButton.setAllCaps(false);recorderButton.setTextColor(TEXT);
@@ -665,9 +660,16 @@ public final class MainActivity extends Activity {
       lp.setMargins(0,dp(4),0,dp(7));pane.addView(take,lp);
     }
     takeDialog=new AlertDialog.Builder(this).setView(scroll).create();
+    // An old dialog may dismiss after the new one appears: never clear
+    // the new dialog's recorder controls on the old dialog's callback.
+    final Button ownButton=recorderButton;
+    final Chronometer ownClock=recordingClock;
     takeDialog.setOnDismissListener(d->{
-      if(recordingClock!=null){recordingClock.stop();recordingClock=null;}
-      recorderButton=null;
+      if(recordingClock==ownClock){
+        if(recordingClock!=null)recordingClock.stop();
+        recordingClock=null;
+      }
+      if(recorderButton==ownButton)recorderButton=null;
     });takeDialog.show();
     takeDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
     takeDialog.getWindow().setLayout(-1,-2);
@@ -682,6 +684,7 @@ public final class MainActivity extends Activity {
     recorderButton.setBackground(box(recording?Color.rgb(100,43,56):Color.rgb(198,45,69),
       90,recording?Color.rgb(255,181,195):Color.rgb(242,129,151),3));
     recorderButton.setContentDescription(recording?"Interrompi registrazione e ascolta":"Inizia registrazione");
+    recorderButton.invalidate();
   }
   private void startRecord(String lid,boolean provisional){
     if(recorder!=null){toast("Registrazione già in corso");return;}
