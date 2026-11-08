@@ -126,11 +126,27 @@ public final class MainActivity extends Activity {
   private void updateConnectionDot(){
     if(connectionDot!=null)connectionDot.setTextColor(pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102));
   }
+  private void choiceSheet(String title,String[] choices,java.util.function.Consumer<Integer> onChoice){
+    LinearLayout pane=column();pane.setPadding(dp(16),dp(13),dp(16),dp(17));
+    pane.setBackground(box(Color.rgb(29,24,41),22,PURPLE,1));
+    TextView heading=label(title,18,TEXT,true);pane.addView(heading);
+    final AlertDialog dialog=new AlertDialog.Builder(this).setView(pane).create();
+    for(int i=0;i<choices.length;i++){
+      final int selected=i;
+      Button option=btn(choices[i],i==0?YELLOW:PURPLE,()->{
+        dialog.dismiss();onChoice.accept(selected);
+      });
+      option.setTextColor(TEXT);option.setTextSize(15);option.setGravity(Gravity.CENTER_VERTICAL|Gravity.START);
+      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(49));
+      lp.setMargins(0,dp(8),0,dp(2));pane.addView(option,lp);
+    }
+    dialog.show();dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+    dialog.getWindow().setLayout((int)(getResources().getDisplayMetrics().widthPixels*.91f),-2);
+  }
   private void showSettingsMenu(View anchor){
-    PopupMenu menu=new PopupMenu(this,anchor);
-    menu.getMenu().add("Cast e personaggi").setOnMenuItemClickListener(item->{openPage("⚙ Cast");return true;});
-    menu.getMenu().add("Sincronizzazione Windows").setOnMenuItemClickListener(item->{openPage("Sincronizza");return true;});
-    menu.show();
+    choiceSheet("Impostazioni",new String[]{"Cast e personaggi","Sincronizzazione Windows"},index->{
+      openPage(index==0?"⚙ Cast":"Sincronizza");
+    });
   }
   private Button iconButton(String glyph,int tint,Runnable handler){
     Button b=btn(glyph,tint,handler);b.setTextColor(tint);b.setTextSize(20);
@@ -206,26 +222,22 @@ public final class MainActivity extends Activity {
   private LinearLayout card(int background){LinearLayout l=column();l.setBackground(box(background,12,Color.rgb(59,48,73),1));pad(l);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.setMargins(0,0,0,dp(9));body.addView(l,params);return l;}
   private LinearLayout actionRow(){LinearLayout l=row();l.setPadding(0,dp(3),0,dp(3));return l;}
   private void projectActions(View anchor,JSONObject p){
-    String id=MobileStore.str(p,"project_id");PopupMenu menu=new PopupMenu(this,anchor);
-    menu.getMenu().add("Rinomina").setOnMenuItemClickListener(item->{
-      askText("Rinomina episodio",MobileStore.str(p,"title"),name->{
-        MobileStore.put(p,"title",name);MobileStore.put(p,"dirty",true);store.saveProject(p);show();
-      });return true;
+    String id=MobileStore.str(p,"project_id");
+    choiceSheet(MobileStore.str(p,"title"),
+      new String[]{"✎  Rinomina","▣  Duplica","▤  Archivia","✕  Elimina definitivamente"},choice->{
+      switch(choice){
+        case 0:askText("Rinomina episodio",MobileStore.str(p,"title"),name->{
+          MobileStore.put(p,"title",name);MobileStore.put(p,"dirty",true);store.saveProject(p);show();
+        });break;
+        case 1:setProject(store.duplicateProject(p));break;
+        case 2:confirm("Archivia episodio?","Nascondo l'episodio solo sul telefono.","Archivia",()->{
+          store.trashProject(p);if(id.equals(pid()))active=null;show();
+        });break;
+        case 3:confirm("Elimina definitivamente?","Elimina il progetto e le registrazioni locali. Il PC rimane invariato.","Elimina",()->{
+          store.deletePermanently(id);if(id.equals(pid()))active=null;show();
+        });break;
+      }
     });
-    menu.getMenu().add("Duplica").setOnMenuItemClickListener(item->{
-      setProject(store.duplicateProject(p));toast("Copia creata senza duplicare le registrazioni");return true;
-    });
-    menu.getMenu().add("Archivia").setOnMenuItemClickListener(item->{
-      confirm("Archivia episodio?","L'episodio viene nascosto solo su Android.","Archivia",()->{
-        store.trashProject(p);if(id.equals(pid()))active=null;show();
-      });return true;
-    });
-    menu.getMenu().add("Elimina definitivamente").setOnMenuItemClickListener(item->{
-      confirm("Eliminazione definitiva","Elimina il progetto e le take SOLO su questo dispositivo. Il PC non viene modificato.","Elimina",()->{
-        store.deletePermanently(id);if(id.equals(pid()))active=null;show();
-      });return true;
-    });
-    menu.show();
   }
   private void renderProjects(){
     section("I tuoi episodi",TEXT);
@@ -548,23 +560,21 @@ public final class MainActivity extends Activity {
       }show();
     }).show();}
   private void openDubbingFilter(View anchor){
-    String[] modes={"Doppiatore","Personaggio","Mostra tutti"};
-    new AlertDialog.Builder(this).setTitle("Filtra per")
-      .setItems(modes,(dialog,which)->{
-        if(which==2){actorFilter="Tutti";show();return;}
-        boolean byActor=which==0;
-        ArrayList<String> names=new ArrayList<>();
-        JSONArray lines=active==null?null:active.optJSONArray("lines");
-        if(lines!=null)for(int i=0;i<lines.length();i++){
-          JSONObject l=lines.optJSONObject(i);if(l==null)continue;
-          String name=byActor?MobileStore.actorName(l,active,cast):MobileStore.characterName(l,cast);
-          if(!names.contains(name))names.add(name);
-        }
-        Collections.sort(names);
-        new AlertDialog.Builder(this).setTitle(modes[which]).setItems(names.toArray(new String[0]),(d,index)->{
-          actorFilter=modes[which]+": "+names.get(index);show();
-        }).setNegativeButton("Indietro",(d,w)->openDubbingFilter(anchor)).show();
-      }).setNegativeButton("Annulla",null).show();
+    choiceSheet("Filtra le battute",new String[]{"Doppiatore","Personaggio","Mostra tutte"},which->{
+      if(which==2){actorFilter="Tutti";show();return;}
+      boolean voice=which==0;
+      ArrayList<String> names=new ArrayList<>();
+      JSONArray lines=active==null?null:active.optJSONArray("lines");
+      if(lines!=null)for(int i=0;i<lines.length();i++){
+        JSONObject line=lines.optJSONObject(i);if(line==null)continue;
+        String name=voice?MobileStore.actorName(line,active,cast):MobileStore.characterName(line,cast);
+        if(!names.contains(name))names.add(name);
+      }
+      Collections.sort(names);
+      choiceSheet(voice?"Scegli doppiatore":"Scegli personaggio",names.toArray(new String[0]),index->{
+        actorFilter=(voice?"Doppiatore: ":"Personaggio: ")+names.get(index);show();
+      });
+    });
   }
   private boolean lineMatchesFilter(JSONObject line){
     if(actorFilter.equals("Tutti"))return true;
