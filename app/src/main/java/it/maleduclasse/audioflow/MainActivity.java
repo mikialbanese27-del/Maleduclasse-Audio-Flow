@@ -178,8 +178,13 @@ public final class MainActivity extends Activity {
     connectionDot=label("●",22,pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102),true);
     connectionDot.setContentDescription(pcOnline?"PC collegato":"PC non collegato");
     header.addView(connectionDot);
-    Button settings=iconButton("⚙",PURPLE,()->showSettingsMenu(connectionDot));
-    settings.setTextSize(27);settings.setContentDescription("Impostazioni");
+    ImageButton settings=new ImageButton(this);
+    settings.setImageResource(android.R.drawable.ic_menu_manage);
+    settings.setColorFilter(TEXT);settings.setBackground(box(Color.rgb(29,24,41),14,PURPLE,1));
+    settings.setContentDescription("Apri impostazioni");
+    settings.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
+    settings.setPadding(dp(12),dp(12),dp(12),dp(12));
+    settings.setOnClickListener(v->showSettingsMenu(v));
     LinearLayout.LayoutParams settingsLp=new LinearLayout.LayoutParams(dp(50),dp(46));
     settingsLp.setMargins(dp(9),0,0,0);header.addView(settings,settingsLp);root.addView(header);
     TextView projectLabel=label(active==null?"Scegli un episodio":MobileStore.str(active,"title"),13,Color.rgb(186,176,203),false);
