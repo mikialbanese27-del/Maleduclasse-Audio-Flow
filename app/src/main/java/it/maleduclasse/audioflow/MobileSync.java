@@ -36,7 +36,69 @@ final class MobileSync {
       try(InputStream in=new FileInputStream(file)){byte[] b=new byte[65536];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}out.write(("\r\n--"+boundary+"--\r\n").getBytes(StandardCharsets.UTF_8));
     }response(con);}finally{con.disconnect();}
   }
-  static final class Result{int projects,takes,assembled;String message(){return projects+" progetti, "+takes+" take, "+assembled+" clip aggiunte alla timeline PC";}}
+  static final class Result{int projects,takes,assembled,receivedProjects,receivedTakes;
+    String message(){return projects+" progetti inviati, "+takes+" take inviate, "+receivedProjects+" progetti ricevuti, "+receivedTakes+" take ricevute";}}
+
+  /** Pull changes only into clean local projects. Dirty drafts are never overwritten. */
+  private int pullProjects()throws Exception{
+    JSONObject remote=state();JSONArray list=remote.optJSONArray("projects");
+    if(list==null)return 0;
+    boolean hasDirty=false;
+    for(JSONObject local:store.projects())if(local.optBoolean("dirty",false)){hasDirty=true;break;}
+    if(hasDirty)return 0;
+    int changed=0;
+    for(int i=0;i<list.length();i++){
+      JSONObject r=list.optJSONObject(i);if(r==null)continue;
+      String id=r.optString("id","");
+      JSONObject local=store.project(id);
+      if(local.optBoolean("dirty",false))continue;
+      String localId=MobileStore.str(local,"project_id");
+      if(localId.isEmpty()||r.optInt("revision",0)>local.optInt("revision",-1)){
+        store.importFromPC(download(id));changed++;
+      }
+    }
+    return changed;
+  }
+  private int pullTakes()throws Exception{
+    int downloaded=0;
+    for(JSONObject project:store.projects()){
+      String pid=MobileStore.str(project,"project_id");
+      JSONObject info=get("/api/sync/projects/"+pid+"/take-list");
+      JSONArray files=info.optJSONArray("takes");if(files==null)continue;
+      for(int i=0;i<files.length();i++){
+        JSONObject t=files.optJSONObject(i);if(t==null)continue;
+        String lid=t.optString("line_id",""),tid=t.optString("id","");
+        if(tid.length()!=16||lid.length()!=16)continue;
+        if(deviceId().equals(t.optString("device_id","")))continue;
+        String extension=t.optString("extension",".m4a");
+        if(!extension.matches("\\.(wav|mp3|m4a|aac|ogg|flac)"))continue;
+        File dest=new File(store.takeDir(pid,lid),"pc_"+tid+extension);
+        if(dest.exists())continue;
+        File temp=new File(dest.getParentFile(),dest.getName()+".download");
+        HttpURLConnection con=connect("/api/sync/projects/"+pid+"/take-file/"+tid,"GET");
+        try{
+          if(con.getResponseCode()!=200)throw new IOException("Download take PC: HTTP "+con.getResponseCode());
+          String checksum=con.getHeaderField("X-MAF-SHA256");
+          if(checksum==null||!checksum.matches("[a-f0-9]{64}"))throw new IOException("Checksum audio PC assente");
+          long length=0;
+          try(InputStream in=con.getInputStream();FileOutputStream out=new FileOutputStream(temp)){
+            byte[] buffer=new byte[65536];int n;
+            while((n=in.read(buffer))!=-1){
+              length+=n;if(length>200_000_000L)throw new IOException("Audio troppo grande");
+              out.write(buffer,0,n);
+            }
+          }
+          if(length==0||!sha256(temp).equals(checksum))throw new IOException("Integrità take PC non valida");
+          if(!temp.renameTo(dest))throw new IOException("Impossibile salvare take PC");
+          downloaded++;
+          if(t.optBoolean("provisional",false))store.setProvisional(pid,lid,dest.getName(),true);
+          JSONObject meta=store.takeMeta(pid,lid);
+          if(t.optBoolean("preferred",false)&&meta.optString("preferred","").isEmpty())store.setPreferred(pid,lid,dest.getName());
+        }finally{con.disconnect();if(temp.exists())temp.delete();}
+      }
+    }
+    return downloaded;
+  }
   Result synchronizeAll()throws Exception{
     Result result=new Result();
     for(JSONObject project:store.projects()){
@@ -61,6 +123,7 @@ final class MobileSync {
         JSONObject line=lines.optJSONObject(i);if(line==null)continue;String lid=MobileStore.str(line,"id");
         JSONObject meta=store.takeMeta(pid,lid);String preferred=meta.optString("preferred","");
         for(File f:store.takes(pid,lid)){
+          if(f.getName().startsWith("pc_"))continue; // PC-origin files are already on the server
           String uploadId=lid+"_"+f.getName();boolean isPreferred=f.getName().equals(preferred);boolean provisional=store.isProvisional(pid,lid,f.getName());
           if(!known.contains(uploadId)){upload(pid,lid,f,provisional,isPreferred);known.add(uploadId);result.takes++;}
           JSONObject state=MobileStore.obj();MobileStore.put(state,"device_id",deviceId());MobileStore.put(state,"upload_id",uploadId);MobileStore.put(state,"preferred",isPreferred);MobileStore.put(state,"provisional",provisional);
@@ -69,6 +132,8 @@ final class MobileSync {
       }
       JSONObject assembled=post("/api/sync/projects/"+pid+"/assemble",MobileStore.obj());result.assembled+=assembled.optInt("inserted",0);
     }
+    result.receivedProjects=pullProjects();
+    result.receivedTakes=pullTakes();
     return result;
   }
 }
