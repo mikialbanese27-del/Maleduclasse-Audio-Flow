@@ -27,7 +27,8 @@ import java.nio.charset.StandardCharsets;
 
 /** Full mobile-first editor: Projects, Script, Cast, Dubbing; timeline/sound library live on PC. */
 public final class MainActivity extends Activity {
-  private static final int MIC=101,IMPORT_WORD=102,IMPORT_TAKE=103,DICTATE=104,IMPORT_EPISODE=105;
+  private static final int MIC=101,IMPORT_WORD=102,IMPORT_TAKE=103,DICTATE=104,IMPORT_EPISODE=105,IMPORT_AVATAR=106;
+  private String avatarTarget="";
   private final int BG=Color.rgb(20,18,29),PANEL=Color.rgb(36,31,48),TEXT=Color.rgb(244,241,248);
   private final int PURPLE=Color.rgb(161,119,242),YELLOW=Color.rgb(231,194,69),GREEN=Color.rgb(27,118,78),RED=Color.rgb(136,35,51),BROWN=Color.rgb(127,78,45);
   private MobileStore store;private MobileSync sync;
@@ -240,6 +241,49 @@ public final class MainActivity extends Activity {
       presets.addView(b,lp);
     }
     scroll.addView(presets);root.addView(scroll);
+    addCharacterShortcuts();
+  }
+  private File avatarFile(String charId){return new File(new File(getFilesDir(),"avatars"),charId+".png");}
+  private View characterFace(JSONObject character,int size){
+    String id=MobileStore.str(character,"id");File avatar=avatarFile(id);
+    if(avatar.exists()){
+      android.widget.ImageView image=new android.widget.ImageView(this);
+      image.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+      image.setImageURI(android.net.Uri.fromFile(avatar));
+      image.setBackground(box(PANEL,12,PURPLE,1));
+      image.setClipToOutline(true);
+      return image;
+    }
+    String name=MobileStore.str(character,"name");
+    String initials=name.trim().isEmpty()?"?":name.trim().substring(0,1).toUpperCase(java.util.Locale.ROOT);
+    TextView fallback=label(initials,20,TEXT,true);fallback.setGravity(Gravity.CENTER);
+    fallback.setBackground(box(Color.rgb(68,53,91),12,PURPLE,1));
+    return fallback;
+  }
+  private void insertCharacter(JSONObject character){
+    if(editor==null)return;
+    insertScriptToken("@"+MobileStore.str(character,"name"));
+    String key="used_"+pid()+"_"+MobileStore.str(character,"id");
+    android.content.SharedPreferences prefs=getPreferences(0);
+    prefs.edit().putInt(key,prefs.getInt(key,0)+1).apply();
+  }
+  private void addCharacterShortcuts(){
+    JSONArray chars=cast.optJSONArray("characters");if(chars==null||chars.length()==0)return;
+    ArrayList<JSONObject> sorted=new ArrayList<>();
+    for(int i=0;i<chars.length();i++){JSONObject ch=chars.optJSONObject(i);if(ch!=null)sorted.add(ch);}
+    android.content.SharedPreferences prefs=getPreferences(0);
+    sorted.sort((x,y)->Integer.compare(
+      prefs.getInt("used_"+pid()+"_"+MobileStore.str(y,"id"),0),
+      prefs.getInt("used_"+pid()+"_"+MobileStore.str(x,"id"),0)));
+    HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);
+    LinearLayout row=row();row.setPadding(dp(4),dp(2),dp(4),dp(2));
+    for(JSONObject character:sorted){
+      View face=characterFace(character,40);
+      LinearLayout.LayoutParams fp=new LinearLayout.LayoutParams(dp(40),dp(40));fp.setMargins(dp(3),0,dp(9),0);
+      row.addView(face,fp);face.setContentDescription("Inserisci "+MobileStore.str(character,"name"));
+      face.setOnClickListener(v->{insertCharacter(character);});
+    }
+    strip.addView(row);root.addView(strip);
   }
   private void insertScriptToken(String token){
     if(editor==null)return;
@@ -275,11 +319,19 @@ public final class MainActivity extends Activity {
   private void showStats(){if(active==null)return;JSONArray lines=active.optJSONArray("lines");TreeMap<String,Integer> counts=new TreeMap<>();int total=0;if(lines!=null)for(int i=0;i<lines.length();i++){JSONObject l=lines.optJSONObject(i);if(l==null)continue;String who=MobileStore.actorName(l,active,cast);counts.put(who,counts.getOrDefault(who,0)+1);total++;}StringBuilder b=new StringBuilder("Battute: "+total+"\nPersonaggi: "+cast.optJSONArray("characters").length()+"\nDoppiatori: "+cast.optJSONArray("actors").length()+"\n\n");for(Map.Entry<String,Integer> e:counts.entrySet())b.append(e.getKey()).append(": ").append(e.getValue()).append(" battute\n");new AlertDialog.Builder(this).setTitle("Statistiche episodio").setMessage(b.toString()).setPositiveButton("OK",null).show();}
   private void dictate(){Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,"it-IT");try{startActivityForResult(intent,DICTATE);}catch(Exception e){toast("Dettatura non disponibile su questo Android");}}
   private void importWord(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");startActivityForResult(intent,IMPORT_WORD);}
-  private void renderCast(){section("⚙ Impostazioni · Cast",Color.rgb(98,218,151));note("I doppiatori e personaggi sono condivisi tra gli episodi. Ogni episodio può avere assegnazioni diverse.");
+  private void chooseAvatar(JSONObject character){
+    avatarTarget=MobileStore.str(character,"id");
+    Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);
+    intent.setType("image/*");startActivityForResult(intent,IMPORT_AVATAR);
+  }
+  private void renderCast(){section("Cast e personaggi",TEXT);note("I doppiatori e personaggi sono condivisi tra gli episodi. Ogni episodio può avere assegnazioni diverse.");
     addButton(body,"＋ Aggiungi doppiatore",GREEN,()->askText("Nuovo doppiatore","",s->{JSONArray actors=cast.optJSONArray("actors");if(MobileStore.byName(actors,s)!=null){toast("Doppiatore già presente");return;}actors.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s));store.saveCast(cast);show();}));
     JSONArray actors=cast.optJSONArray("actors");for(int i=0;actors!=null&&i<actors.length();i++){JSONObject a=actors.optJSONObject(i);if(a==null)continue;LinearLayout panel=card(PANEL);LinearLayout r=actionRow();TextView title=label("🎙 "+MobileStore.str(a,"name"),16,TEXT,true);r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.addView(btn("Rinomina",PANEL,()->askText("Rinomina doppiatore",MobileStore.str(a,"name"),name->{MobileStore.put(a,"name",name);store.saveCast(cast);show();})));r.addView(btn("Elimina",RED,()->deleteCastActor(a)));panel.addView(r);}
     addButton(body,"＋ Aggiungi personaggio",PURPLE,()->askText("Nome nuovo personaggio","",s->{JSONArray list=cast.optJSONArray("characters");if(MobileStore.byName(list,s)!=null){toast("Personaggio già presente");return;}list.put(MobileStore.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s),"actor_id",JSONObject.NULL));store.saveCast(cast);show();}));
-    JSONArray characters=cast.optJSONArray("characters");for(int i=0;characters!=null&&i<characters.length();i++){JSONObject ch=characters.optJSONObject(i);if(ch==null)continue;LinearLayout panel=card(PANEL);panel.addView(label("@"+MobileStore.str(ch,"name"),16,Color.rgb(98,218,151),true));
+    JSONArray characters=cast.optJSONArray("characters");for(int i=0;characters!=null&&i<characters.length();i++){JSONObject ch=characters.optJSONObject(i);if(ch==null)continue;LinearLayout panel=card(PANEL);LinearLayout identity=row();
+      identity.addView(characterFace(ch,44),new LinearLayout.LayoutParams(dp(44),dp(44)));
+      identity.addView(label("@"+MobileStore.str(ch,"name"),16,TEXT,true),new LinearLayout.LayoutParams(0,-2,1));
+      identity.addView(btn("▧",PANEL,()->chooseAvatar(ch)));panel.addView(identity);
       JSONObject actor=MobileStore.byId(actors,MobileStore.str(ch,"actor_id"));panel.addView(label("Doppiatore base: "+(actor==null?"Non assegnato":MobileStore.str(actor,"name")),13,Color.LTGRAY,false));
       LinearLayout actions=actionRow();actions.addView(btn("Rinomina",PANEL,()->askText("Rinomina personaggio",MobileStore.str(ch,"name"),name->{MobileStore.put(ch,"name",name);store.saveCast(cast);show();})));actions.addView(btn("Assegna voce",GREEN,()->chooseActor(ch,null)));if(active!=null)actions.addView(btn("Voce episodio",PURPLE,()->chooseActor(ch,active)));actions.addView(btn("Elimina",RED,()->deleteCastCharacter(ch)));panel.addView(actions);
     }
@@ -644,7 +696,23 @@ public final class MainActivity extends Activity {
     runOnUiThread(()->new AlertDialog.Builder(this).setTitle("Importa episodio dal PC").setItems(choices,(d,which)->background(()->{try{JSONObject full=sync.download(ids[which]);runOnUiThread(()->{try{store.importFromPC(full);cast=store.cast();setProject(store.project(ids[which]));toast("Progetto importato sul telefono");}catch(Exception ex){toast(ex.getMessage());}});}catch(Exception ex){error(ex);}})).setNegativeButton("Annulla",null).show());
     }catch(Exception ex){error(ex);}});}
   @Override protected void onActivityResult(int request,int result,Intent intent){super.onActivityResult(request,result,intent);if(result!=RESULT_OK||intent==null)return;try{
-    if(request==IMPORT_WORD){if(editor==null)return;try(InputStream input=getContentResolver().openInputStream(intent.getData())){String imported=MobileStore.docxText(input);editor.getText().insert(editor.getSelectionStart(),imported);toast("Word importato. Controlla i tag e salva.");}}
+    if(request==IMPORT_AVATAR&&!avatarTarget.isEmpty()){
+      File dest=avatarFile(avatarTarget);dest.getParentFile().mkdirs();
+      android.graphics.Bitmap bitmap=null;
+      try(InputStream in=getContentResolver().openInputStream(intent.getData())){
+        bitmap=android.graphics.BitmapFactory.decodeStream(in);
+      }
+      if(bitmap==null)throw new IOException("Immagine non valida");
+      int w=bitmap.getWidth(),h=bitmap.getHeight();
+      if(w>2048||h>2048){float scale=Math.min(2048f/w,2048f/h);
+        bitmap=android.graphics.Bitmap.createScaledBitmap(bitmap,Math.max(1,(int)(w*scale)),Math.max(1,(int)(h*scale)),true);
+      }
+      try(FileOutputStream out=new FileOutputStream(dest)){
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,95,out);
+      }
+      avatarTarget="";show();toast("Icona salvata sul telefono");
+    }
+    else if(request==IMPORT_WORD){if(editor==null)return;try(InputStream input=getContentResolver().openInputStream(intent.getData())){String imported=MobileStore.docxText(input);editor.getText().insert(editor.getSelectionStart(),imported);toast("Word importato. Controlla i tag e salva.");}}
     else if(request==DICTATE){ArrayList<String> results=intent.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(editor!=null&&results!=null&&!results.isEmpty())editor.getText().insert(Math.max(0,editor.getSelectionStart()),results.get(0));}
     else if(request==IMPORT_TAKE&&active!=null&&!selectedLine.isEmpty()){
       String lid=selectedLine;String extension=".m4a";String name="take_import_"+System.currentTimeMillis();String type=getContentResolver().getType(intent.getData());
