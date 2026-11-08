@@ -63,7 +63,7 @@ public final class MainActivity extends Activity {
     @Override public void run(){autoSync();ui.postDelayed(this,12000);}
   };
   @Override protected void onResume(){super.onResume();ui.removeCallbacks(lanHeartbeat);ui.postDelayed(lanHeartbeat,1100);}
-  @Override protected void onPause(){ui.removeCallbacks(lanHeartbeat);super.onPause();}
+  @Override protected void onPause(){ui.removeCallbacks(lanHeartbeat);stopDictation();super.onPause();}
   private boolean wifiConnected(){
     ConnectivityManager cm=(ConnectivityManager)getSystemService(CONNECTIVITY_SERVICE);
     if(cm==null)return false;Network network=cm.getActiveNetwork();if(network==null)return false;
@@ -131,7 +131,7 @@ public final class MainActivity extends Activity {
     b.setTextSize(11);b.setMinHeight(0);b.setPadding(dp(3),dp(4),dp(3),dp(4));return b;
   }
   private void show(){
-    dismissSuggestions();editor=null;editorDirty=false;
+    stopDictation();dictationButton=null;dismissSuggestions();editor=null;editorDirty=false;
     root=column();root.setBackgroundColor(BG);setContentView(root);
     // Non-edge-to-edge window: system status/navigation bars reserve their own space.
     getWindow().getDecorView().setFitsSystemWindows(true);
@@ -372,6 +372,59 @@ public final class MainActivity extends Activity {
       String name=s.trim().substring(1).trim().replaceFirst(":$","");if(MobileStore.byName(cast.optJSONArray("characters"),name)==null)issues.append("Personaggio non riconosciuto: ").append(name).append("\n");}
     new AlertDialog.Builder(this).setTitle("Controllo sceneggiatura").setMessage(parsed.size()+" battute riconosciute\n"+(issues.length()==0?"Nessun errore nei tag @ esatti.":issues.toString())+"\nIl PC effettuerà il controllo definitivo durante la sincronizzazione.").setPositiveButton("OK",null).show();}
   private void showStats(){if(active==null)return;JSONArray lines=active.optJSONArray("lines");TreeMap<String,Integer> counts=new TreeMap<>();int total=0;if(lines!=null)for(int i=0;i<lines.length();i++){JSONObject l=lines.optJSONObject(i);if(l==null)continue;String who=MobileStore.actorName(l,active,cast);counts.put(who,counts.getOrDefault(who,0)+1);total++;}StringBuilder b=new StringBuilder("Battute: "+total+"\nPersonaggi: "+cast.optJSONArray("characters").length()+"\nDoppiatori: "+cast.optJSONArray("actors").length()+"\n\n");for(Map.Entry<String,Integer> e:counts.entrySet())b.append(e.getKey()).append(": ").append(e.getValue()).append(" battute\n");new AlertDialog.Builder(this).setTitle("Statistiche episodio").setMessage(b.toString()).setPositiveButton("OK",null).show();}
+  private void updateDictationButton(){
+    if(dictationButton==null)return;
+    dictationButton.setText(dictationActive?"●":"🎙");
+    dictationButton.setTextColor(dictationActive?Color.rgb(196,255,80):TEXT);
+    dictationButton.setContentDescription(dictationActive?"Ferma dettatura":"Avvia dettatura");
+  }
+  private void stopDictation(){
+    dictationActive=false;updateDictationButton();
+    if(speechRecognizer!=null){try{speechRecognizer.cancel();speechRecognizer.destroy();}catch(Exception ignored){}speechRecognizer=null;}
+  }
+  private void toggleDictation(){
+    if(dictationActive){stopDictation();return;}
+    if(editor==null)return;
+    if(!android.speech.SpeechRecognizer.isRecognitionAvailable(this)){
+      toast("Riconoscimento vocale non disponibile");return;
+    }
+    if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+      requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC);
+      toast("Consenti l'accesso al microfono e riprova");return;
+    }
+    try{
+      speechRecognizer=android.speech.SpeechRecognizer.createSpeechRecognizer(this);
+      speechRecognizer.setRecognitionListener(new android.speech.RecognitionListener(){
+        public void onReadyForSpeech(Bundle b){dictationActive=true;updateDictationButton();}
+        public void onBeginningOfSpeech(){}
+        public void onRmsChanged(float rms){}
+        public void onBufferReceived(byte[] data){}
+        public void onEndOfSpeech(){dictationActive=false;updateDictationButton();}
+        public void onError(int code){
+          dictationActive=false;updateDictationButton();
+          if(code!=android.speech.SpeechRecognizer.ERROR_NO_MATCH &&
+             code!=android.speech.SpeechRecognizer.ERROR_SPEECH_TIMEOUT)
+            toast("Dettatura non disponibile: codice "+code);
+        }
+        public void onResults(Bundle bundle){
+          ArrayList<String> results=bundle.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION);
+          if(results!=null&&!results.isEmpty()&&editor!=null){
+            int cursor=Math.max(0,editor.getSelectionStart());
+            editor.getText().insert(cursor,results.get(0)+" ");
+          }
+          dictationActive=false;updateDictationButton();
+        }
+        public void onPartialResults(Bundle bundle){}
+        public void onEvent(int event,Bundle b){}
+      });
+      Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+      intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+      intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,"it-IT");
+      intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,false);
+      dictationActive=true;updateDictationButton();
+      speechRecognizer.startListening(intent);
+    }catch(Exception ex){stopDictation();toast("Dettatura non disponibile: "+ex.getMessage());}
+  }
   private void dictate(){Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,"it-IT");try{startActivityForResult(intent,DICTATE);}catch(Exception e){toast("Dettatura non disponibile su questo Android");}}
   private void importWord(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");startActivityForResult(intent,IMPORT_WORD);}
   private void chooseAvatar(JSONObject character){
@@ -790,5 +843,5 @@ public final class MainActivity extends Activity {
     else if(request==IMPORT_EPISODE){ /* reserved for migration */ }
     }catch(Exception ex){toast("File: "+ex.getMessage());}}
   @Override public void onBackPressed(){if(recorder!=null){confirm("Registrazione in corso","Fermare e salvare la registrazione prima di uscire?","Stop e salva",this::stopRecord);return;}if(!page.equals("Progetti")){openPage("Progetti");return;}super.onBackPressed();}
-  @Override protected void onDestroy(){if(recorder!=null){try{recorder.stop();}catch(Exception ignored){}recorder.release();}if(player!=null)player.release();dismissSuggestions();super.onDestroy();}
+  @Override protected void onDestroy(){stopDictation();if(recorder!=null){try{recorder.stop();}catch(Exception ignored){}recorder.release();}if(player!=null)player.release();dismissSuggestions();super.onDestroy();}
 }
