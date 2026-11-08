@@ -106,11 +106,16 @@ public final class MainActivity extends Activity {
     b.setPadding(dp(10),dp(5),dp(10),dp(5));
     int stroke=color==PANEL?Color.rgb(94,79,120):color;
     b.setTextColor(color==PANEL?TEXT:color);
+    b.setMinHeight(0);b.setMinWidth(0);
     b.setBackgroundTintList(null);
     b.setBackground(box(Color.rgb(27,24,39),17,stroke,1));
     b.setOnClickListener(v->handler.run());return b;
   }
-  private void addButton(LinearLayout target,String label,int color,Runnable handler){Button b=btn(label,color,handler);target.addView(b,new LinearLayout.LayoutParams(-1,dp(50)));}
+  private void addButton(LinearLayout target,String label,int color,Runnable handler){
+    Button b=btn(label,color,handler);
+    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,dp(46));
+    lp.setMargins(0,dp(5),0,dp(8));target.addView(b,lp);
+  }
   private void pad(View v){v.setPadding(dp(12),dp(12),dp(12),dp(12));}
   private void section(String s,int color){TextView title=label(s,19,color,true);body.addView(title);}
   private void note(String s){body.addView(label(s,13,Color.rgb(179,173,193),false));}
@@ -126,9 +131,19 @@ public final class MainActivity extends Activity {
     menu.getMenu().add("Sincronizzazione Windows").setOnMenuItemClickListener(item->{openPage("Sincronizza");return true;});
     menu.show();
   }
+  private Button iconButton(String glyph,int tint,Runnable handler){
+    Button b=btn(glyph,tint,handler);b.setTextColor(tint);b.setTextSize(20);
+    b.setPadding(0,0,0,0);b.setMinWidth(0);b.setMinHeight(0);
+    return b;
+  }
   private Button navButton(String glyph,String title,String destination){
-    Button b=btn(glyph+"\n"+title,page.equals(destination)?Color.rgb(78,59,107):BG,()->openPage(destination));
-    b.setTextSize(11);b.setMinHeight(0);b.setPadding(dp(3),dp(4),dp(3),dp(4));return b;
+    boolean selected=page.equals(destination);
+    Button b=btn(glyph+"\n"+title,selected?YELLOW:PURPLE,()->openPage(destination));
+    b.setTextSize(12);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+    b.setTextColor(selected?Color.rgb(38,22,65):TEXT);
+    b.setMinWidth(0);b.setMinHeight(0);b.setPadding(dp(3),dp(5),dp(3),dp(5));
+    b.setBackground(box(selected?YELLOW:Color.rgb(27,24,39),16,selected?YELLOW:Color.rgb(83,70,105),1));
+    return b;
   }
   private void show(){
     stopDictation();dictationButton=null;dismissSuggestions();editor=null;editorDirty=false;
@@ -145,8 +160,11 @@ public final class MainActivity extends Activity {
     header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
     connectionDot=label("●",22,pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102),true);
     connectionDot.setContentDescription(pcOnline?"PC collegato":"PC non collegato");
-    header.addView(connectionDot);Button settings=btn("⚙",PANEL,()->showSettingsMenu(connectionDot));
-    settings.setTextSize(23);header.addView(settings);root.addView(header);
+    header.addView(connectionDot);
+    Button settings=iconButton("⚙",PURPLE,()->showSettingsMenu(connectionDot));
+    settings.setTextSize(27);settings.setContentDescription("Impostazioni");
+    LinearLayout.LayoutParams settingsLp=new LinearLayout.LayoutParams(dp(50),dp(46));
+    settingsLp.setMargins(dp(9),0,0,0);header.addView(settings,settingsLp);root.addView(header);
     TextView projectLabel=label(active==null?"Scegli un episodio":MobileStore.str(active,"title"),13,Color.rgb(186,176,203),false);
     projectLabel.setMaxLines(1);root.addView(projectLabel);
     if(page.equals("Sceneggiatura")&&active!=null)addScriptPresetToolbar();
@@ -159,9 +177,12 @@ public final class MainActivity extends Activity {
     {
       LinearLayout bottom=row();bottom.setGravity(Gravity.CENTER);
       bottom.setPadding(dp(6),dp(5),dp(6),dp(7));bottom.setBackgroundColor(Color.rgb(26,23,36));
-      bottom.addView(navButton("▦","Progetti","Progetti"),new LinearLayout.LayoutParams(0,dp(60),1));
-      bottom.addView(navButton("✎","Scrivi","Sceneggiatura"),new LinearLayout.LayoutParams(0,dp(60),1));
-      bottom.addView(navButton("◉","Doppiaggio","Doppiaggio"),new LinearLayout.LayoutParams(0,dp(60),1));
+      String[] tabs={"Progetti","Scrivi","Doppiaggio"},destinations={"Progetti","Sceneggiatura","Doppiaggio"},symbols={"▦","✎","◉"};
+      for(int i=0;i<3;i++){
+        LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,dp(58),1);
+        navLp.setMargins(dp(4),0,dp(4),0);
+        bottom.addView(navButton(symbols[i],tabs[i],destinations[i]),navLp);
+      }
       root.addView(bottom);
       final View navBar=bottom;
       final View observed=root;
@@ -284,7 +305,7 @@ public final class MainActivity extends Activity {
       final int which=i;
       Button b=btn(names[i],colors[i],()->{if(which==0)chooseCharacterInsert();else insertScriptToken(tokens[which]);});
       b.setFocusable(false);b.setTextSize(12);
-      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(46));lp.setMargins(dp(2),0,dp(5),0);
+      LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(36));lp.setMargins(dp(3),0,dp(7),0);
       presets.addView(b,lp);
     }
     scroll.addView(presets);root.addView(scroll);
