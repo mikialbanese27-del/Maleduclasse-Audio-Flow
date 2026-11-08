@@ -190,7 +190,7 @@ public final class MainActivity extends Activity {
       JSONObject ch=found.get(i);list.addView(btn(MobileStore.str(ch,"name"),PANEL,()->{Editable edit=editor.getText();edit.replace(start,Math.min(cursor,edit.length()),"@"+MobileStore.str(ch,"name"));dismissSuggestions();}));
     }suggestions=new PopupWindow(list,dp(280),-2,false);suggestions.setBackgroundDrawable(box(PANEL,8,PURPLE,1));suggestions.setOutsideTouchable(true);suggestions.setElevation(dp(9));suggestions.showAsDropDown(editor,dp(10),-dp(160));
   }
-  private void chooseCharacterInsert(){JSONArray chars=cast.optJSONArray("characters");if(chars==null||chars.length()==0){toast("Aggiungi prima un personaggio in ⚙ Cast");return;}String[] names=new String[chars.length()];for(int i=0;i<names.length;i++)names[i]=MobileStore.str(chars.optJSONObject(i),"name");new AlertDialog.Builder(this).setTitle("Inserisci personaggio").setItems(names,(d,i)->{if(editor!=null){int pos=Math.max(0,editor.getSelectionStart());editor.getText().insert(pos,"@"+names[i]+"\n");}}).show();}
+  private void chooseCharacterInsert(){JSONArray chars=cast.optJSONArray("characters");if(chars==null||chars.length()==0){toast("Aggiungi prima un personaggio in ⚙ Cast");return;}String[] names=new String[chars.length()];for(int i=0;i<names.length;i++)names[i]=MobileStore.str(chars.optJSONObject(i),"name");new AlertDialog.Builder(this).setTitle("Inserisci personaggio").setItems(names,(d,i)->{if(editor!=null){int pos=Math.max(0,editor.getSelectionStart());insertScriptToken("@"+names[i]);}}).show();}
   private boolean saveEditor(){if(editor==null||active==null)return false;try{String old=MobileStore.str(active,"script"),next=editor.getText().toString();if(!old.equals(next)){active=store.saveScript(active,next);editorDirty=false;}return true;}catch(Exception ex){toast("Impossibile salvare: "+ex.getMessage());return false;}}
   private void showValidation(String text){if(active==null)return;JSONObject temp=MobileStore.obj();MobileStore.put(temp,"script",text);List<JSONObject> parsed=store.parseScript(temp,cast,active.optJSONArray("lines"));StringBuilder issues=new StringBuilder();for(String s:text.split("\n"))if(s.trim().startsWith("@")){
       String name=s.trim().substring(1).trim().replaceFirst(":$","");if(MobileStore.byName(cast.optJSONArray("characters"),name)==null)issues.append("Personaggio non riconosciuto: ").append(name).append("\n");}
@@ -293,9 +293,14 @@ public final class MainActivity extends Activity {
       LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,dp(5),0,dp(4));pane.addView(take,lp);
     }
     takeDialog=new AlertDialog.Builder(this).setTitle("Doppiaggio · Battuta").setView(scroll)
-      .setPositiveButton("Chiudi",(dialog,which)->{recordingClock=null;recorderButton=null;show();}).create();
+      .setPositiveButton("Chiudi",null).create();
     takeDialog.setOnDismissListener(dialog->{if(recordingClock!=null){recordingClock.stop();recordingClock=null;}recorderButton=null;});
     takeDialog.show();
+    takeDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+      if(recorder!=null){toast("Ferma e salva la registrazione prima di chiudere");return;}
+      takeDialog.dismiss();show();
+    });
+    takeDialog.setCancelable(recorder==null);
     takeDialog.getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
   }
   private void startRecord(String lid,boolean provisional){if(recorder!=null){toast("Registrazione in corso");return;}if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MIC);toast("Autorizza microfono e premi di nuovo Registra");return;}
