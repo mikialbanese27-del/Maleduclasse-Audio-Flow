@@ -200,12 +200,67 @@ public final class MainActivity extends Activity {
   private void importWord(){Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");startActivityForResult(intent,IMPORT_WORD);}
   private void renderCast(){section("⚙ Impostazioni · Cast",Color.rgb(98,218,151));note("I doppiatori e personaggi sono condivisi tra gli episodi. Ogni episodio può avere assegnazioni diverse.");
     addButton(body,"＋ Aggiungi doppiatore",GREEN,()->askText("Nuovo doppiatore","",s->{JSONArray actors=cast.optJSONArray("actors");if(MobileStore.byName(actors,s)!=null){toast("Doppiatore già presente");return;}actors.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s));store.saveCast(cast);show();}));
-    JSONArray actors=cast.optJSONArray("actors");for(int i=0;actors!=null&&i<actors.length();i++){JSONObject a=actors.optJSONObject(i);if(a==null)continue;LinearLayout panel=card(PANEL);LinearLayout r=actionRow();TextView title=label("🎙 "+MobileStore.str(a,"name"),16,TEXT,true);r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.addView(btn("Rinomina",PANEL,()->askText("Rinomina doppiatore",MobileStore.str(a,"name"),name->{MobileStore.put(a,"name",name);store.saveCast(cast);show();})));panel.addView(r);}
+    JSONArray actors=cast.optJSONArray("actors");for(int i=0;actors!=null&&i<actors.length();i++){JSONObject a=actors.optJSONObject(i);if(a==null)continue;LinearLayout panel=card(PANEL);LinearLayout r=actionRow();TextView title=label("🎙 "+MobileStore.str(a,"name"),16,TEXT,true);r.addView(title,new LinearLayout.LayoutParams(0,-2,1));r.addView(btn("Rinomina",PANEL,()->askText("Rinomina doppiatore",MobileStore.str(a,"name"),name->{MobileStore.put(a,"name",name);store.saveCast(cast);show();})));r.addView(btn("Elimina",RED,()->deleteCastActor(a)));panel.addView(r);}
     addButton(body,"＋ Aggiungi personaggio",PURPLE,()->askText("Nome nuovo personaggio","",s->{JSONArray list=cast.optJSONArray("characters");if(MobileStore.byName(list,s)!=null){toast("Personaggio già presente");return;}list.put(MobileStore.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s),"actor_id",JSONObject.NULL));store.saveCast(cast);show();}));
     JSONArray characters=cast.optJSONArray("characters");for(int i=0;characters!=null&&i<characters.length();i++){JSONObject ch=characters.optJSONObject(i);if(ch==null)continue;LinearLayout panel=card(PANEL);panel.addView(label("@"+MobileStore.str(ch,"name"),16,Color.rgb(98,218,151),true));
       JSONObject actor=MobileStore.byId(actors,MobileStore.str(ch,"actor_id"));panel.addView(label("Doppiatore base: "+(actor==null?"Non assegnato":MobileStore.str(actor,"name")),13,Color.LTGRAY,false));
-      LinearLayout actions=actionRow();actions.addView(btn("Rinomina",PANEL,()->askText("Rinomina personaggio",MobileStore.str(ch,"name"),name->{MobileStore.put(ch,"name",name);store.saveCast(cast);show();})));actions.addView(btn("Assegna voce",GREEN,()->chooseActor(ch,null)));if(active!=null)actions.addView(btn("Voce episodio",PURPLE,()->chooseActor(ch,active)));panel.addView(actions);
+      LinearLayout actions=actionRow();actions.addView(btn("Rinomina",PANEL,()->askText("Rinomina personaggio",MobileStore.str(ch,"name"),name->{MobileStore.put(ch,"name",name);store.saveCast(cast);show();})));actions.addView(btn("Assegna voce",GREEN,()->chooseActor(ch,null)));if(active!=null)actions.addView(btn("Voce episodio",PURPLE,()->chooseActor(ch,active)));actions.addView(btn("Elimina",RED,()->deleteCastCharacter(ch)));panel.addView(actions);
     }
+  }
+  private static JSONArray withoutId(JSONArray source,String id){
+    JSONArray result=MobileStore.array();
+    if(source!=null)for(int i=0;i<source.length();i++){
+      JSONObject x=source.optJSONObject(i);
+      if(x!=null&&!id.equals(MobileStore.str(x,"id")))result.put(x);
+    }
+    return result;
+  }
+  private void deleteCastActor(JSONObject actor){
+    String id=MobileStore.str(actor,"id"),name=MobileStore.str(actor,"name");
+    JSONArray chars=cast.optJSONArray("characters");
+    if(chars!=null)for(int i=0;i<chars.length();i++){
+      JSONObject ch=chars.optJSONObject(i);
+      if(ch!=null&&id.equals(MobileStore.str(ch,"actor_id"))){
+        toast("Doppiatore ancora assegnato: rimuovi prima le assegnazioni");return;
+      }
+    }
+    for(JSONObject project:store.projects()){
+      JSONArray overrides=project.optJSONArray("overrides");
+      if(overrides!=null)for(int i=0;i<overrides.length();i++){
+        JSONObject ov=overrides.optJSONObject(i);
+        if(ov!=null&&id.equals(MobileStore.str(ov,"actor_id"))){
+          toast("Doppiatore utilizzato in un episodio: rimuovi prima la voce episodio");return;
+        }
+      }
+    }
+    confirm("Eliminare doppiatore?","Eliminare "+name+" dal cast condiviso?","Elimina",()->{
+      MobileStore.put(cast,"actors",withoutId(cast.optJSONArray("actors"),id));store.saveCast(cast);show();
+    });
+  }
+  private void deleteCastCharacter(JSONObject character){
+    String id=MobileStore.str(character,"id"),name=MobileStore.str(character,"name");
+    for(JSONObject project:store.projects()){
+      JSONArray lines=project.optJSONArray("lines");
+      if(lines!=null)for(int i=0;i<lines.length();i++){
+        JSONObject line=lines.optJSONObject(i);
+        if(line!=null&&id.equals(MobileStore.str(line,"character_id"))){
+          toast("Personaggio usato nelle battute: correggi prima i copioni");return;
+        }
+      }
+      JSONArray overrides=project.optJSONArray("overrides");
+      if(overrides!=null)for(int i=0;i<overrides.length();i++){
+        JSONObject ov=overrides.optJSONObject(i);
+        if(ov!=null&&id.equals(MobileStore.str(ov,"character_id"))){
+          toast("Personaggio assegnato in un episodio: rimuovi prima l'assegnazione");return;
+        }
+      }
+      if(MobileStore.str(project,"script").contains("@"+name)){
+        toast("Personaggio citato nel copione: correggi prima il testo");return;
+      }
+    }
+    confirm("Eliminare personaggio?","Eliminare "+name+" dal cast condiviso?","Elimina",()->{
+      MobileStore.put(cast,"characters",withoutId(cast.optJSONArray("characters"),id));store.saveCast(cast);show();
+    });
   }
   private void chooseActor(JSONObject character,JSONObject projectOverride){JSONArray actors=cast.optJSONArray("actors");String[] choices=new String[(actors==null?0:actors.length())+1];choices[0]="Non assegnato";for(int i=1;i<choices.length;i++)choices[i]=MobileStore.str(actors.optJSONObject(i-1),"name");new AlertDialog.Builder(this).setTitle(projectOverride==null?"Voce principale":"Voce per questo episodio").setItems(choices,(d,which)->{
       Object actorId=which==0?JSONObject.NULL:MobileStore.str(actors.optJSONObject(which-1),"id");if(projectOverride==null){MobileStore.put(character,"actor_id",actorId);store.saveCast(cast);}else{
