@@ -52,6 +52,7 @@ public final class MainActivity extends Activity {
   private android.widget.SeekBar deckSeekBar;
   private android.widget.TextView deckTimeLabel;
   private long deckRecordStartMs=0L,deckLastDurationMs=0L;
+  private File deckAudioFile;
 
   private Button activePlayButton;private File activePlayFile;
   private Button dictationButton;private android.speech.SpeechRecognizer speechRecognizer;
@@ -745,6 +746,7 @@ public final class MainActivity extends Activity {
     if(current==null&&takes.length>0){current=takes[takes.length-1];selectedTakeName=current.getName();}
     boolean pending=recordingPending&&lid.equals(recordingLine);
     File selectedAudio=pending?recordingFile:current;
+    deckAudioFile=selectedAudio;
     boolean complete=takes.length>0;
     boolean preferred=current!=null&&store.isPreferred(pid(),lid,current.getName());
     boolean provisional=current!=null&&store.isProvisional(pid(),lid,current.getName());
@@ -755,36 +757,38 @@ public final class MainActivity extends Activity {
     int linePos=0;
     for(int i=0;i<same.size();i++)if(lid.equals(MobileStore.str(same.get(i),"id")))linePos=i;
     final int pos=linePos;
-    LinearLayout titleBar=row();titleBar.setGravity(Gravity.CENTER_VERTICAL);
-    Button prev=iconButton("⌃",PURPLE,()->navigateDeck(line,-1));
-    prev.setEnabled(pos>0&&!pending&&recorder==null);
-    titleBar.addView(prev,new LinearLayout.LayoutParams(dp(43),dp(43)));
-    TextView heading=label(MobileStore.characterName(line,cast),24,YELLOW,true);
+    TextView heading=label(MobileStore.characterName(line,cast),30,YELLOW,true);
     heading.setGravity(Gravity.CENTER);
-    titleBar.addView(heading,new LinearLayout.LayoutParams(0,dp(48),1));
-    Button next=iconButton("⌄",PURPLE,()->navigateDeck(line,1));
-    next.setEnabled(pos<same.size()-1&&!pending&&recorder==null);
-    titleBar.addView(next,new LinearLayout.LayoutParams(dp(43),dp(43)));
-    pane.addView(titleBar);
-    TextView counter=label("BATTUTA "+(pos+1)+" / "+same.size(),11,Color.rgb(175,158,205),true);
+    pane.addView(heading,new LinearLayout.LayoutParams(-1,dp(56)));
+    TextView counter=label("BATTUTA "+(pos+1)+" DI "+same.size(),15,Color.rgb(199,176,232),true);
     counter.setGravity(Gravity.CENTER);pane.addView(counter);
-    if(pos>0){
-      TextView previous=label("⌃  "+MobileStore.str(same.get(pos-1),"text"),12,Color.rgb(165,146,183),false);
-      previous.setGravity(Gravity.CENTER);previous.setPadding(dp(12),dp(9),dp(12),dp(9));
-      previous.setBackground(box(Color.rgb(36,23,52),30,PURPLE,1));
-      previous.setOnClickListener(v->navigateDeck(line,-1));
-      pane.addView(previous);
-    }
-    TextView phrase=label(MobileStore.str(line,"text"),20,TEXT,true);phrase.setGravity(Gravity.CENTER);
+    TextView phrase=label(MobileStore.str(line,"text"),24,TEXT,true);
+    phrase.setGravity(Gravity.CENTER);
     LinearLayout.LayoutParams phraseLp=new LinearLayout.LayoutParams(-1,-2);
-    phraseLp.setMargins(0,dp(15),0,dp(13));pane.addView(phrase,phraseLp);
-    TextView instruction=label("↑↓ Battute  ·  ←→ Take",12,Color.rgb(181,151,220),false);
-    instruction.setGravity(Gravity.CENTER);pane.addView(instruction);
+    phraseLp.setMargins(dp(5),dp(18),dp(5),dp(17));pane.addView(phrase,phraseLp);
     int dialSize=Math.min(dp(302),getResources().getDisplayMetrics().widthPixels-dp(52));
-    FrameLayout dial=new FrameLayout(this);
+    FrameLayout dial=new FrameLayout(this){
+      private float swipeX,swipeY;private boolean gestureStarted;
+      @Override public boolean dispatchTouchEvent(MotionEvent e){
+        if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
+          swipeX=e.getX();swipeY=e.getY();gestureStarted=true;
+        }
+        if(e.getActionMasked()==MotionEvent.ACTION_UP&&gestureStarted){
+          gestureStarted=false;
+          float dx=e.getX()-swipeX,dy=e.getY()-swipeY;
+          if(Math.max(Math.abs(dx),Math.abs(dy))>dp(42)){
+            if(Math.abs(dy)>Math.abs(dx)*1.25f)navigateDeck(line,dy<0?1:-1);
+            else if(Math.abs(dx)>Math.abs(dy)*1.25f)shiftDeckTake(line,dx<0?1:-1);
+            return true;
+          }
+        }
+        if(e.getActionMasked()==MotionEvent.ACTION_CANCEL)gestureStarted=false;
+        return super.dispatchTouchEvent(e);
+      }
+    };
     RecorderDialView face=new RecorderDialView(this);face.state(complete,recorder!=null,pending);
     dial.addView(face,new FrameLayout.LayoutParams(-1,-1));
-    installDeckGestures(face,line);
+    // Gestures are captured at the dial container so children cannot hide them.
     LinearLayout dialContent=column();dialContent.setGravity(Gravity.CENTER);
     FrameLayout.LayoutParams overlay=new FrameLayout.LayoutParams(-1,-1);dial.addView(dialContent,overlay);
     LinearLayout controls=row();controls.setGravity(Gravity.CENTER);
@@ -848,16 +852,10 @@ public final class MainActivity extends Activity {
     LinearLayout.LayoutParams dialLp=new LinearLayout.LayoutParams(dialSize,dialSize);
     dialLp.gravity=Gravity.CENTER;dialLp.setMargins(0,dp(15),0,dp(14));pane.addView(dial,dialLp);
     renderRecorderState();
-    if(pos<same.size()-1){
-      TextView following=label("⌄  "+MobileStore.str(same.get(pos+1),"text"),12,Color.rgb(179,153,207),false);
-      following.setGravity(Gravity.CENTER);following.setPadding(dp(12),dp(12),dp(12),dp(12));
-      following.setBackground(box(Color.rgb(36,23,52),30,PURPLE,1));
-      following.setOnClickListener(v->navigateDeck(line,1));pane.addView(following);
-    }
-    if(takes.length>0||pending){
-      TextView index=label(pending?"NUOVA TAKE · DA CONFERMARE":
-         "TAKE "+(Arrays.asList(takes).indexOf(current)+1)+" / "+takes.length,12,YELLOW,true);
-      index.setGravity(Gravity.CENTER);pane.addView(index);
+
+    if(pending){
+      TextView reviewHint=label("TAKE DA CONFERMARE",12,YELLOW,true);
+      reviewHint.setGravity(Gravity.CENTER);pane.addView(reviewHint);
     }
     if(selectedAudio!=null){
       LinearLayout audio=row();audio.setGravity(Gravity.CENTER_VERTICAL);
@@ -897,8 +895,8 @@ public final class MainActivity extends Activity {
         pane.addView(waveform,new LinearLayout.LayoutParams(-1,dp(62)));
       }
     }
-    Button menu=iconButton("⋯",PURPLE,()->{});
-    menu.setTextSize(23);
+    Button menu=iconButton("＋",PURPLE,()->{});
+    menu.setTextSize(27);menu.setContentDescription("Importa file audio");
     menu.setOnClickListener(v->{
       choiceSheet("Take e registrazioni",new String[]{"Importa audio da file"},choice->{
         Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
