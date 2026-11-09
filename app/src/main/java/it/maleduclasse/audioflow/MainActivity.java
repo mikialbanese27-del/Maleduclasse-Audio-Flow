@@ -295,20 +295,28 @@ public final class MainActivity extends Activity {
     TextView scriptHeading=label("Sceneggiatura",19,TEXT,true);
     scriptTop.addView(scriptHeading,new LinearLayout.LayoutParams(0,-2,1));
 
-    Button menuButton=btn("⋮",PANEL,()->{});menuButton.setTextSize(23);
-    menuButton.setOnClickListener(v->{
-      PopupMenu menu=new PopupMenu(this,v);
-
-      menu.getMenu().add("Importa Word").setOnMenuItemClickListener(item->{importWord();return true;});
-      menu.getMenu().add("Controlla battute").setOnMenuItemClickListener(item->{
-        if(editor!=null)showValidation(editor.getText().toString());return true;
-      });
-      menu.getMenu().add("Statistiche").setOnMenuItemClickListener(item->{showStats();return true;});
-      menu.show();
-    });scriptTop.addView(menuButton);
-    Button mic=btn("🎙",PANEL,()->toggleDictation());mic.setTextSize(21);
-    mic.setContentDescription("Dettatura senza cambiare schermata");
-    dictationButton=mic;scriptTop.addView(mic);body.addView(scriptTop);
+    Button mic=btn("🎙",PANEL,()->toggleDictation());
+    mic.setBackgroundColor(Color.TRANSPARENT);mic.setTextColor(TEXT);mic.setTextSize(23);
+    mic.setPadding(0,0,0,0);mic.setContentDescription("Dettatura");
+    dictationButton=mic;
+    LinearLayout.LayoutParams micLp=new LinearLayout.LayoutParams(dp(43),dp(43));
+    micLp.setMargins(dp(5),0,dp(3),0);scriptTop.addView(mic,micLp);
+    Button menuButton=btn("⋮",PANEL,()->{});
+    menuButton.setTextSize(26);menuButton.setTextColor(TEXT);
+    menuButton.setPadding(0,0,0,0);menuButton.setBackgroundColor(Color.TRANSPARENT);
+    menuButton.setContentDescription("Altre azioni sceneggiatura");
+    menuButton.setOnClickListener(v->choiceSheet("Strumenti sceneggiatura",
+      new String[]{"Importa Word","Controlla battute","Statistiche"},choice->{
+        switch(choice){
+          case 0:importWord();break;
+          case 1:if(editor!=null)showValidation(editor.getText().toString());break;
+          case 2:showStats();break;
+        }
+      }));
+    LinearLayout.LayoutParams menuLp=new LinearLayout.LayoutParams(dp(42),dp(43));
+    menuLp.setMargins(dp(3),0,0,0);scriptTop.addView(menuButton,menuLp);
+    LinearLayout.LayoutParams topLp=new LinearLayout.LayoutParams(-1,-2);
+    topLp.setMargins(0,dp(8),0,dp(14));body.addView(scriptTop,topLp);
 
     editor=new EditText(this);editor.setTextColor(TEXT);editor.setHintTextColor(Color.GRAY);editor.setHint("/scena Scena 1\n@Personaggio\nScrivi qui la battuta...");editor.setTextSize(17);
     editor.setGravity(Gravity.TOP);editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES|android.text.InputType.TYPE_TEXT_FLAG_AUTO_CORRECT);
