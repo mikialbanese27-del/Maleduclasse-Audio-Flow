@@ -620,13 +620,44 @@ public final class MainActivity extends Activity {
       }catch(Exception ex){runOnUiThread(()->{syncBusy=false;pcOnline=false;updateConnectionDot();toast("Invio timeline non riuscito: "+ex.getMessage());});}
     });
   }
+  private void openDubbingSearch(){
+    EditText query=new EditText(this);query.setTextColor(TEXT);
+    query.setSingleLine(true);query.setText(dubbingSearch);query.setHint("Cerca una parola della battuta");
+    query.setHintTextColor(Color.rgb(145,130,165));
+    query.setPadding(dp(12),dp(13),dp(12),dp(13));
+    query.setBackground(box(Color.rgb(32,26,46),12,PURPLE,1));
+    LinearLayout wrap=column();wrap.setPadding(dp(20),dp(12),dp(20),dp(12));wrap.addView(query);
+    new AlertDialog.Builder(this).setTitle("Cerca battuta").setView(wrap)
+      .setPositiveButton("Cerca",(dialog,which)->{
+        dubbingSearch=query.getText().toString().trim();show();
+      }).setNeutralButton("Mostra tutte",(dialog,which)->{dubbingSearch="";show();})
+      .setNegativeButton("Annulla",null).show();
+  }
+  private void importTakeForLine(String id){
+    if(active==null||id==null||id.isEmpty())return;
+    importTakeTargetLine=id;
+    Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
+    intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("audio/*");
+    startActivityForResult(intent,IMPORT_TAKE);
+  }
   private void renderDubbing(){
     if(active==null){section("Doppiaggio",TEXT);return;}
     LinearLayout top=row();
     TextView title=label("Doppiaggio",20,TEXT,true);top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
-    Button filter=btn("☷",PANEL,()->{});filter.setTextSize(22);
-    filter.setContentDescription("Filtra per doppiatore o personaggio");
-    filter.setOnClickListener(v->openDubbingFilter(v));top.addView(filter);body.addView(top);
+    Button search=iconButton("⌕",YELLOW,()->openDubbingSearch());
+    search.setTextSize(27);search.setContentDescription("Cerca battuta per parola chiave");
+    top.addView(search,new LinearLayout.LayoutParams(dp(46),dp(45)));
+    Button filter=iconButton("☷",PURPLE,()->{});
+    filter.setTextSize(24);filter.setContentDescription("Filtra per doppiatore o personaggio");
+    filter.setOnClickListener(v->openDubbingFilter(v));
+    top.addView(filter,new LinearLayout.LayoutParams(dp(46),dp(45)));
+    body.addView(top);
+    if(!dubbingSearch.isEmpty()){
+      TextView query=label("⌕  "+dubbingSearch+"    ✕",13,YELLOW,true);
+      query.setPadding(dp(8),dp(10),dp(8),dp(10));
+      query.setOnClickListener(v->{dubbingSearch="";show();});
+      body.addView(query);
+    }
     if(!actorFilter.equals("Tutti")){
       TextView activeFilter=label(actorFilter+"   ×",12,Color.rgb(177,155,219),false);
       activeFilter.setOnClickListener(v->{actorFilter="Tutti";show();});body.addView(activeFilter);
@@ -634,7 +665,9 @@ public final class MainActivity extends Activity {
     JSONArray lines=active.optJSONArray("lines");
     int ready=0,total=0;LinearLayout cells=column();
     if(lines!=null)for(int i=0;i<lines.length();i++){
-      JSONObject line=lines.optJSONObject(i);if(line==null||!lineMatchesFilter(line))continue;
+      JSONObject line=lines.optJSONObject(i);if(line==null||!lineMatchesFilter(line)||
+        (!dubbingSearch.trim().isEmpty()&&!MobileStore.str(line,"text")
+        .toLowerCase(java.util.Locale.ROOT).contains(dubbingSearch.trim().toLowerCase(java.util.Locale.ROOT))))continue;
       total++;String id=MobileStore.str(line,"id");
       File[] takes=store.takes(pid(),id);
       boolean complete=takes.length>0&&!"rerecord".equals(MobileStore.str(line,"status"));
@@ -645,6 +678,11 @@ public final class MainActivity extends Activity {
         id.equals(selectedLine)?PURPLE:Color.rgb(75,61,83),id.equals(selectedLine)?4:1));
       cell.addView(label(MobileStore.characterName(line,cast)+"   ·   "+MobileStore.actorName(line,active,cast)+"   ·   "+takes.length+" take",13,TEXT,true));
       cell.addView(label(MobileStore.str(line,"text"),16,TEXT,false));
+      LinearLayout importRow=row();importRow.setGravity(Gravity.RIGHT|Gravity.CENTER_VERTICAL);
+      Button file=iconButton("⇩",YELLOW,()->importTakeForLine(id));
+      file.setTextSize(20);file.setContentDescription("Importa take audio per questa battuta");
+      importRow.addView(file,new LinearLayout.LayoutParams(dp(43),dp(39)));
+      cell.addView(importRow);
       cell.setOnClickListener(v->{selectedLine=id;showTakeDialog(line);});
       LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);
       lp.setMargins(0,dp(4),0,dp(5));cells.addView(cell,lp);
@@ -1163,10 +1201,14 @@ public final class MainActivity extends Activity {
     }
     else if(request==IMPORT_WORD){if(editor==null)return;try(InputStream input=getContentResolver().openInputStream(intent.getData())){String imported=MobileStore.docxText(input);editor.getText().insert(editor.getSelectionStart(),imported);toast("Word importato. Controlla i tag e salva.");}}
     else if(request==DICTATE){ArrayList<String> results=intent.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(editor!=null&&results!=null&&!results.isEmpty())editor.getText().insert(Math.max(0,editor.getSelectionStart()),results.get(0));}
-    else if(request==IMPORT_TAKE&&active!=null&&!selectedLine.isEmpty()){
-      String lid=selectedLine;String extension=".m4a";String name="take_import_"+System.currentTimeMillis();String type=getContentResolver().getType(intent.getData());
+    else if(request==IMPORT_TAKE&&active!=null&&
+      (!importTakeTargetLine.isEmpty()||!selectedLine.isEmpty())){
+      String lid=importTakeTargetLine.isEmpty()?selectedLine:importTakeTargetLine;
+      importTakeTargetLine="";String extension=".m4a";String name="take_import_"+System.currentTimeMillis();String type=getContentResolver().getType(intent.getData());
       if(type!=null){if(type.contains("wav"))extension=".wav";else if(type.contains("mpeg"))extension=".mp3";else if(type.contains("ogg"))extension=".ogg";else if(type.contains("flac"))extension=".flac";else if(type.contains("aac"))extension=".aac";}
-      File destination=new File(store.takeDir(pid(),lid),name+extension);try(InputStream in=getContentResolver().openInputStream(intent.getData());FileOutputStream out=new FileOutputStream(destination)){byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}JSONObject line=MobileStore.byId(active.optJSONArray("lines"),lid);selectedTakeName=destination.getName();if(line!=null)showTakeDialog(line);toast("Audio importato");
+      File destination=new File(store.takeDir(pid(),lid),name+extension);try(InputStream in=getContentResolver().openInputStream(intent.getData());FileOutputStream out=new FileOutputStream(destination)){byte[] b=new byte[16384];int n;while((n=in.read(b))!=-1)out.write(b,0,n);}JSONObject line=MobileStore.byId(active.optJSONArray("lines"),lid);selectedTakeName=destination.getName();
+      if(page.equals("Doppiaggio"))show();else if(line!=null)showTakeDialog(line);
+      toast("Take importata");
     }
     else if(request==IMPORT_EPISODE){ /* reserved for migration */ }
     }catch(Exception ex){toast("File: "+ex.getMessage());}}
