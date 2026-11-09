@@ -688,7 +688,7 @@ public final class MainActivity extends Activity {
       total++;String id=MobileStore.str(line,"id");
       File[] takes=store.takes(pid(),id);
       // A confirmed file is the source of truth for the red/green dubbing card.
-      boolean complete=takes.length>0;
+      boolean complete=takes.length>0&&!"rerecord".equals(MobileStore.str(line,"status"));
       if(complete)ready++;
       // Keep the approved red/green cells and yellow selection stroke unchanged.
       LinearLayout cell=column();cell.setPadding(dp(13),dp(12),dp(13),dp(12));
@@ -823,7 +823,7 @@ public final class MainActivity extends Activity {
       final String lid=MobileStore.str(item,"id");
       final int sequence=index+1;
       File[] takes=store.takes(pid(),lid);
-      boolean complete=takes.length>0;
+      boolean complete=takes.length>0&&!"rerecord".equals(MobileStore.str(item,"status"));
       if(complete)completed++;
       String selectedName=deckTakeSelection.get(lid);
       File chosen=null;
@@ -1179,6 +1179,12 @@ public final class MainActivity extends Activity {
         pendingPreferred=false;recordingProvisional=false;
         selectedTakeName=dest.getName();
         deckTakeSelection.put(lid,dest.getName());
+        // A line edited after an earlier take stays red until a new take is confirmed.
+        if(line!=null&&"rerecord".equals(MobileStore.str(line,"status"))){
+          MobileStore.put(line,"status","recorded");
+          MobileStore.put(active,"dirty",true);
+          store.saveProject(active);
+        }
         refreshDubbingOverview();
         recordingPending=false;recordingFile=null;recordingLine="";
         if(reviewDialog!=null){reviewDialog.dismiss();reviewDialog=null;}
