@@ -1,4 +1,4 @@
-# Maleduclasse Audio Flow — Android v0.4 Mobile First
+# Maleduclasse Audio Flow — Android 1.3.1 / PC Mobile First v0.4
 
 L'app Android è il punto di partenza per creare **progetti, copioni, cast e take**. Il PC importa queste informazioni, assembla la timeline e gestisce suoni e mix.
 
@@ -13,9 +13,13 @@ L'app Android è il punto di partenza per creare **progetti, copioni, cast e tak
 
 ## APK
 
-GitHub Actions → **Build Maleduclasse Android APK** → artefatto `Maleduclasse_Audio_Flow_Android_debug_APK`.
-Compatibilità: Android 8.0+.
-Questa è una build **debug da collaudare su dispositivo reale**, non una release definitiva firmata per Google Play.
+Android 1.3.1 (versionCode 15), compatibilità Android 8.0+.
+
+GitHub Actions → **Build Android APK** produce un pacchetto **debug** di prova e un pacchetto **release unsigned**. Nessuno dei due artefatti CI deve essere considerato la versione definitiva: la release Android viene firmata separatamente con una chiave privata conservata fuori dal repository. La chiave di firma **non va caricata su GitHub**.
+
+La release firmata usa lo stesso application ID `it.maleduclasse.audioflow.deck131`; il passaggio da debug a release può richiedere la disinstallazione della build precedente a causa delle diverse firme. Prima di farlo, sincronizzare e salvare progetti e take: la disinstallazione cancella i dati locali dell'app.
+
+Una release firmata localmente non è stata collaudata fisicamente su smartphone né verificata end-to-end con uno specifico pacchetto Windows.
 
 ## Windows
 
