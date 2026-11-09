@@ -159,14 +159,18 @@ public final class MainActivity extends Activity {
     b.setPadding(0,0,0,0);b.setMinWidth(0);b.setMinHeight(0);
     return b;
   }
-  private Button navButton(String glyph,String title,String destination){
+  private View navButton(String glyph,String title,String destination){
     boolean selected=page.equals(destination);
-    Button b=btn(glyph+"\n"+title,selected?YELLOW:PURPLE,()->openPage(destination));
-    b.setTextSize(12);b.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
-    b.setTextColor(selected?Color.rgb(38,22,65):TEXT);
-    b.setMinWidth(0);b.setMinHeight(0);b.setPadding(dp(3),dp(5),dp(3),dp(5));
-    b.setBackground(box(selected?YELLOW:Color.rgb(27,24,39),16,selected?YELLOW:Color.rgb(83,70,105),1));
-    return b;
+    LinearLayout tab=column();tab.setGravity(Gravity.CENTER);
+    tab.setBackground(box(selected?YELLOW:Color.rgb(27,24,39),16,selected?YELLOW:Color.rgb(83,70,105),1));
+    int ink=selected?Color.rgb(38,22,65):TEXT;
+    TextView symbol=label(glyph,26,ink,true);symbol.setGravity(Gravity.CENTER);
+    symbol.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
+    tab.addView(symbol,new LinearLayout.LayoutParams(-1,dp(33)));
+    TextView caption=label(title,12,ink,true);caption.setGravity(Gravity.CENTER);
+    tab.addView(caption,new LinearLayout.LayoutParams(-1,dp(20)));
+    tab.setContentDescription(title);tab.setOnClickListener(v->openPage(destination));
+    return tab;
   }
   private void show(){
     stopDictation();dictationButton=null;dismissSuggestions();editor=null;editorDirty=false;
@@ -205,7 +209,7 @@ public final class MainActivity extends Activity {
     {
       LinearLayout bottom=row();bottom.setGravity(Gravity.CENTER);
       bottom.setPadding(dp(6),dp(5),dp(6),dp(7));bottom.setBackgroundColor(Color.rgb(26,23,36));
-      String[] tabs={"Progetti","Scrivi","Doppiaggio"},destinations={"Progetti","Sceneggiatura","Doppiaggio"},symbols={"▦","✎","◉"};
+      String[] tabs={"Progetti","Scrivi","Doppiaggio"},destinations={"Progetti","Sceneggiatura","Doppiaggio"},symbols={"▦","✎","🎙"};
       for(int i=0;i<3;i++){
         LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,dp(58),1);
         navLp.setMargins(dp(4),0,dp(4),0);
@@ -367,7 +371,9 @@ public final class MainActivity extends Activity {
     HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);
     characterShortcutRow=row();characterShortcutRow.setPadding(dp(4),dp(2),dp(4),dp(2));
     populateCharacterShortcuts(characterShortcutRow);
-    strip.addView(characterShortcutRow);root.addView(strip);
+    strip.addView(characterShortcutRow);
+    LinearLayout.LayoutParams avatarSpacing=new LinearLayout.LayoutParams(-1,dp(49));
+    avatarSpacing.setMargins(0,dp(13),0,dp(8));root.addView(strip,avatarSpacing);
   }
   private void populateCharacterShortcuts(LinearLayout row){
     JSONArray chars=cast.optJSONArray("characters");if(chars==null||chars.length()==0)return;
@@ -489,7 +495,14 @@ public final class MainActivity extends Activity {
       LinearLayout.LayoutParams delLp=new LinearLayout.LayoutParams(dp(44),dp(44));delLp.setMargins(dp(7),0,0,0);
       r.addView(delete,delLp);panel.addView(r);}
     addButton(body,"＋ Aggiungi personaggio",PURPLE,()->askText("Nome nuovo personaggio","",s->{JSONArray list=cast.optJSONArray("characters");if(MobileStore.byName(list,s)!=null){toast("Personaggio già presente");return;}list.put(MobileStore.put(MobileStore.put(MobileStore.put(MobileStore.obj(),"id",MobileStore.id()),"name",s),"actor_id",JSONObject.NULL));store.saveCast(cast);show();}));
-    JSONArray characters=cast.optJSONArray("characters");for(int i=0;characters!=null&&i<characters.length();i++){JSONObject ch=characters.optJSONObject(i);if(ch==null)continue;LinearLayout panel=card(PANEL);LinearLayout identity=row();
+    JSONArray characters=cast.optJSONArray("characters");for(int i=0;characters!=null&&i<characters.length();i++){
+      JSONObject ch=characters.optJSONObject(i);if(ch==null)continue;
+      JSONObject linkedActor=MobileStore.byId(actors,MobileStore.str(ch,"actor_id"));
+      boolean unassigned=linkedActor==null;
+      LinearLayout panel=card(unassigned?Color.rgb(69,30,44):PANEL);
+      panel.setBackground(box(unassigned?Color.rgb(69,30,44):PANEL,14,
+        unassigned?Color.rgb(235,70,95):Color.rgb(86,66,111),unassigned?2:1));
+      LinearLayout identity=row();
       View face=characterFace(ch,44);face.setOnClickListener(v->chooseAvatar(ch));
       face.setContentDescription("Tocca per cambiare foto di "+MobileStore.str(ch,"name"));
       identity.addView(face,new LinearLayout.LayoutParams(dp(44),dp(44)));
@@ -499,7 +512,9 @@ public final class MainActivity extends Activity {
       pencil.setContentDescription("Rinomina personaggio");
       identity.addView(pencil,new LinearLayout.LayoutParams(dp(44),dp(44)));
       panel.addView(identity);
-      JSONObject actor=MobileStore.byId(actors,MobileStore.str(ch,"actor_id"));panel.addView(label("Doppiatore base: "+(actor==null?"Non assegnato":MobileStore.str(actor,"name")),13,Color.LTGRAY,false));
+      JSONObject actor=linkedActor;
+      panel.addView(label(actor==null?"● Nessun doppiatore assegnato":"Doppiatore: "+MobileStore.str(actor,"name"),
+        13,actor==null?Color.rgb(255,132,150):Color.LTGRAY,false));
       LinearLayout actions=actionRow();
       Button assign=btn("Assegna voce",PURPLE,()->chooseActor(ch,null));
       actions.addView(assign,new LinearLayout.LayoutParams(0,dp(44),1));
