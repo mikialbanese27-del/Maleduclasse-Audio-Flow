@@ -738,6 +738,7 @@ public final class MainActivity extends Activity {
   private void showTakeDialog(JSONObject line){
     if(active==null||line==null)return;
     if(takeDialog!=null&&takeDialog.isShowing())takeDialog.dismiss();
+    if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;activePlayFile=null;}
     if(deckSeekTick!=null)ui.removeCallbacks(deckSeekTick);
     String lid=MobileStore.str(line,"id");selectedLine=lid;
     File[] takes=store.takes(pid(),lid);
@@ -895,6 +896,35 @@ public final class MainActivity extends Activity {
         pane.addView(waveform,new LinearLayout.LayoutParams(-1,dp(62)));
       }
     }
+    // Read-only, independently scrollable script context for acting direction.
+    JSONArray episodeLines=active.optJSONArray("lines");
+    if(episodeLines!=null&&episodeLines.length()>0){
+      StringBuilder surroundings=new StringBuilder();
+      int absolute=-1;
+      for(int k=0;k<episodeLines.length();k++){
+        JSONObject item=episodeLines.optJSONObject(k);
+        if(item!=null&&lid.equals(MobileStore.str(item,"id"))){absolute=k;break;}
+      }
+      if(absolute>=0){
+        int start=Math.max(0,absolute-4),end=Math.min(episodeLines.length(),absolute+5);
+        for(int k=start;k<end;k++){
+          JSONObject item=episodeLines.optJSONObject(k);if(item==null)continue;
+          surroundings.append(k==absolute?"▶ ":"   ");
+          surroundings.append(MobileStore.characterName(item,cast)).append(": ");
+          surroundings.append(MobileStore.str(item,"text")).append("\n\n");
+        }
+        TextView contextHeading=label("CONTESTO DEL COPIONE",11,Color.rgb(190,161,224),true);
+        LinearLayout.LayoutParams contextTitleLp=new LinearLayout.LayoutParams(-1,-2);
+        contextTitleLp.setMargins(dp(5),dp(15),0,dp(4));pane.addView(contextHeading,contextTitleLp);
+        ScrollView contextScroll=new ScrollView(this);contextScroll.setVerticalScrollBarEnabled(false);
+        contextScroll.setBackground(box(Color.rgb(36,30,50),14,Color.rgb(104,73,149),1));
+        TextView contextText=label(surroundings.toString().trim(),13,Color.rgb(216,206,228),false);
+        contextText.setPadding(dp(13),dp(10),dp(13),dp(10));
+        contextScroll.addView(contextText);
+        LinearLayout.LayoutParams contextLp=new LinearLayout.LayoutParams(-1,dp(103));
+        contextLp.setMargins(0,0,0,dp(9));pane.addView(contextScroll,contextLp);
+      }
+    }
     Button menu=iconButton("＋",PURPLE,()->{});
     menu.setTextSize(27);menu.setContentDescription("Importa file audio");
     menu.setOnClickListener(v->{
@@ -922,12 +952,19 @@ public final class MainActivity extends Activity {
   private void renderRecorderState(){
     if(recorderButton==null)return;
     boolean recording=recorder!=null;
-    boolean hasTake=recordingPending||store.takes(pid(),selectedLine).length>0;
-    recorderButton.setText(recording?"■ STOP":(hasTake?"▶ PLAY":"● REC"));
-    recorderButton.setTextSize(recording?19:22);
-    recorderButton.setBackground(box(recording?Color.rgb(100,43,56):Color.rgb(198,45,69),
-      90,recording?Color.rgb(255,181,195):Color.rgb(242,129,151),3));
-    recorderButton.setContentDescription(recording?"Interrompi registrazione e ascolta":"Inizia registrazione");
+    boolean hasAudio=deckAudioFile!=null&&deckAudioFile.exists();
+    boolean playing=!recording&&hasAudio&&player!=null&&
+      deckAudioFile.equals(activePlayFile)&&player.isPlaying();
+    int background=recording?Color.rgb(174,41,69):
+      hasAudio?Color.rgb(28,126,86):Color.rgb(203,45,79);
+    int border=recording?Color.rgb(255,151,169):
+      hasAudio?Color.rgb(124,249,181):Color.rgb(250,131,151);
+    recorderButton.setText(recording?"■ STOP":!hasAudio?"● REC":playing?"Ⅱ PAUSA":"▶ PLAY");
+    recorderButton.setTextSize(recording?19:20);
+    recorderButton.setTextColor(Color.WHITE);
+    recorderButton.setBackground(box(background,90,border,3));
+    recorderButton.setContentDescription(recording?"Ferma la registrazione":
+      hasAudio?playing?"Pausa audio":"Riproduci audio":"Inizia a registrare");
     recorderButton.invalidate();
   }
   private void startRecord(String lid,boolean provisional){
@@ -1068,11 +1105,12 @@ public final class MainActivity extends Activity {
         if(player.isPlaying()){player.pause();button.setText("▶");button.setContentDescription("Riprendi take");}
         else{player.start();button.setText("Ⅱ");button.setContentDescription("Metti in pausa");}
       }catch(Exception ex){toast("Riproduzione: "+ex.getMessage());}
-      return;
+      renderRecorderState();return;
     }
     resetPlayerButton();activePlayButton=button;
     play(file);
     if(player!=null){activePlayFile=file;button.setText("Ⅱ");button.setContentDescription("Metti in pausa");}
+    renderRecorderState();
   }
   private void play(File audio){
     if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;}
@@ -1081,9 +1119,10 @@ public final class MainActivity extends Activity {
       player=new MediaPlayer();player.setDataSource(audio.getAbsolutePath());
       player.prepare();player.start();
       player.setOnCompletionListener(p->{
-        p.release();player=null;activePlayFile=null;resetPlayerButton();
+        p.release();player=null;activePlayFile=null;resetPlayerButton();renderRecorderState();
       });
     }catch(Exception ex){player=null;toast("Impossibile riprodurre: "+ex.getMessage());}
+    renderRecorderState();
   }
   private void renderSync(){section("Sincronizzazione con Windows",YELLOW);note("La Wi-Fi privata sincronizza copioni, cast e take tra telefono e PC. Le modifiche offline restano locali finché non viene stabilita la connessione.");
     addButton(body,"⚙ Collega PC / codice",PURPLE,this::pairDialog);
