@@ -358,7 +358,6 @@ public final class MainActivity extends Activity {
   }
   private LinearLayout characterShortcutRow;
   private void addCharacterShortcuts(){
-    JSONArray chars=cast.optJSONArray("characters");if(chars==null||chars.length()==0)return;
     HorizontalScrollView strip=new HorizontalScrollView(this);strip.setHorizontalScrollBarEnabled(false);
     characterShortcutRow=row();characterShortcutRow.setPadding(dp(4),dp(2),dp(4),dp(2));
     populateCharacterShortcuts(characterShortcutRow);
