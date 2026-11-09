@@ -782,7 +782,39 @@ public final class MainActivity extends Activity {
     boolean complete=takes.length>0;
     boolean preferred=current!=null&&store.isPreferred(pid(),lid,current.getName());
     boolean provisional=current!=null&&store.isProvisional(pid(),lid,current.getName());
-    ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
+    final View[] contextZone=new View[1];
+    final View[] seekZone=new View[1];
+    ScrollView scroll=new ScrollView(this){
+      private float startX,startY,rawStartX,rawStartY;
+      private boolean blocked;
+      @Override public boolean dispatchTouchEvent(MotionEvent e){
+        if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
+          startX=e.getX();startY=e.getY();
+          rawStartX=e.getRawX();rawStartY=e.getRawY();
+          blocked=false;
+          for(View zone:new View[]{contextZone[0],seekZone[0]}){
+            if(zone==null)continue;
+            android.graphics.Rect rect=new android.graphics.Rect();
+            if(zone.getGlobalVisibleRect(rect)&&rect.contains((int)rawStartX,(int)rawStartY)){
+              blocked=true;break;
+            }
+          }
+        }
+        if(e.getActionMasked()==MotionEvent.ACTION_UP&&!blocked){
+          float dx=e.getX()-startX,dy=e.getY()-startY;
+          if(Math.abs(dy)>dp(65)&&Math.abs(dy)>Math.abs(dx)*1.2f){
+            final int movement=dy<0?1:-1;
+            post(()->navigateDeck(line,movement));return true;
+          }
+          if(Math.abs(dx)>dp(65)&&Math.abs(dx)>Math.abs(dy)*1.2f){
+            final int movement=dx<0?1:-1;
+            post(()->shiftDeckTake(line,movement));return true;
+          }
+        }
+        return super.dispatchTouchEvent(e);
+      }
+    };
+    scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
     LinearLayout pane=column();pane.setPadding(dp(17),dp(20),dp(17),dp(38));
     pane.setBackgroundColor(Color.rgb(17,13,27));scroll.addView(pane);
     ArrayList<JSONObject> same=characterLines(line);
@@ -897,7 +929,7 @@ public final class MainActivity extends Activity {
       SeekBar seek=new SeekBar(this);seek.setMax(1000);
       seek.setProgressTintList(ColorStateList.valueOf(PURPLE));
       seek.setThumbTintList(ColorStateList.valueOf(YELLOW));
-      audio.addView(seek,new LinearLayout.LayoutParams(0,dp(52),1));
+      audio.addView(seek,new LinearLayout.LayoutParams(0,dp(52),1));seekZone[0]=seek;
       long length=audioLength(selectedAudio);
       TextView time=label("00:00 / "+(length/1000)+"s",11,TEXT,false);
       audio.addView(time);
@@ -927,46 +959,52 @@ public final class MainActivity extends Activity {
         pane.addView(waveform,new LinearLayout.LayoutParams(-1,dp(62)));
       }
     }
-    // Read-only, independently scrollable script context for acting direction.
-    JSONArray episodeLines=active.optJSONArray("lines");
-    if(episodeLines!=null&&episodeLines.length()>0){
-      StringBuilder surroundings=new StringBuilder();
-      int absolute=-1;
-      for(int k=0;k<episodeLines.length();k++){
-        JSONObject item=episodeLines.optJSONObject(k);
-        if(item!=null&&lid.equals(MobileStore.str(item,"id"))){absolute=k;break;}
+    if(takes.length>1&&!pending){
+      TextView takeHeading=label("LE TUE TAKE",11,Color.rgb(187,159,224),true);
+      LinearLayout.LayoutParams headingLp=new LinearLayout.LayoutParams(-1,-2);
+      headingLp.setMargins(dp(5),dp(8),0,dp(5));pane.addView(takeHeading,headingLp);
+      HorizontalScrollView takeScroller=new HorizontalScrollView(this);
+      takeScroller.setHorizontalScrollBarEnabled(false);
+      LinearLayout takeTabs=row();
+      for(int index=0;index<takes.length;index++){
+        final File take=takes[index];
+        boolean chosen=take.getName().equals(selectedTakeName);
+        Button chip=btn("Take "+(index+1)+(store.isPreferred(pid(),lid,take.getName())?" ★":""),chosen?YELLOW:PURPLE,()->{
+          selectedTakeName=take.getName();showTakeDialog(line);
+        });
+        chip.setTextColor(chosen?YELLOW:TEXT);
+        LinearLayout.LayoutParams chipLp=new LinearLayout.LayoutParams(-2,dp(40));
+        chipLp.setMargins(dp(3),0,dp(8),0);takeTabs.addView(chip,chipLp);
       }
-      if(absolute>=0){
-        int start=Math.max(0,absolute-4),end=Math.min(episodeLines.length(),absolute+5);
-        for(int k=start;k<end;k++){
-          JSONObject item=episodeLines.optJSONObject(k);if(item==null)continue;
-          surroundings.append(k==absolute?"▶ ":"   ");
-          surroundings.append(MobileStore.characterName(item,cast)).append(": ");
-          surroundings.append(MobileStore.str(item,"text")).append("\n\n");
-        }
-        TextView contextHeading=label("CONTESTO DEL COPIONE",11,Color.rgb(190,161,224),true);
-        LinearLayout.LayoutParams contextTitleLp=new LinearLayout.LayoutParams(-1,-2);
-        contextTitleLp.setMargins(dp(5),dp(15),0,dp(4));pane.addView(contextHeading,contextTitleLp);
-        ScrollView contextScroll=new ScrollView(this);contextScroll.setVerticalScrollBarEnabled(false);
-        contextScroll.setBackground(box(Color.rgb(36,30,50),14,Color.rgb(104,73,149),1));
-        TextView contextText=label(surroundings.toString().trim(),13,Color.rgb(216,206,228),false);
-        contextText.setPadding(dp(13),dp(10),dp(13),dp(10));
-        contextScroll.addView(contextText);
-        LinearLayout.LayoutParams contextLp=new LinearLayout.LayoutParams(-1,dp(103));
-        contextLp.setMargins(0,0,0,dp(9));pane.addView(contextScroll,contextLp);
-      }
+      takeScroller.addView(takeTabs);pane.addView(takeScroller);
     }
-    Button menu=iconButton("＋",PURPLE,()->{});
-    menu.setTextSize(27);menu.setContentDescription("Importa file audio");
-    menu.setOnClickListener(v->{
-      choiceSheet("Take e registrazioni",new String[]{"Importa audio da file"},choice->{
-        Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("audio/*");
-        startActivityForResult(intent,IMPORT_TAKE);
+    // Entire screenplay, not a truncated selection. Its own scrolling is independent.
+    String fullScript=MobileStore.str(active,"script");
+    if(!fullScript.isEmpty()){
+      TextView contextHeading=label("CONTESTO DEL COPIONE",11,Color.rgb(190,161,224),true);
+      LinearLayout.LayoutParams contextTitleLp=new LinearLayout.LayoutParams(-1,-2);
+      contextTitleLp.setMargins(dp(5),dp(16),0,dp(5));pane.addView(contextHeading,contextTitleLp);
+      ScrollView contextScroll=new ScrollView(this);
+      contextScroll.setVerticalScrollBarEnabled(true);
+      contextScroll.setNestedScrollingEnabled(true);
+      contextScroll.setBackground(box(Color.rgb(36,30,50),14,Color.rgb(104,73,149),1));
+      TextView contextText=label(fullScript,13,Color.rgb(216,206,228),false);
+      contextText.setPadding(dp(13),dp(12),dp(13),dp(12));
+      contextText.setTextIsSelectable(false);
+      contextScroll.addView(contextText);
+      contextScroll.setOnTouchListener((v,e)->{
+        if(e.getActionMasked()==MotionEvent.ACTION_DOWN ||
+           e.getActionMasked()==MotionEvent.ACTION_MOVE)
+          v.getParent().requestDisallowInterceptTouchEvent(true);
+        if(e.getActionMasked()==MotionEvent.ACTION_UP ||
+           e.getActionMasked()==MotionEvent.ACTION_CANCEL)
+          v.getParent().requestDisallowInterceptTouchEvent(false);
+        return false;
       });
-    });
-    LinearLayout tools=row();tools.setGravity(Gravity.CENTER);
-    tools.addView(menu,new LinearLayout.LayoutParams(dp(48),dp(42)));pane.addView(tools);
+      contextZone[0]=contextScroll;
+      LinearLayout.LayoutParams contextLp=new LinearLayout.LayoutParams(-1,dp(125));
+      contextLp.setMargins(0,0,0,dp(10));pane.addView(contextScroll,contextLp);
+    }
     takeDialog=new AlertDialog.Builder(this).setView(scroll).create();
     final Button ownButton=recorderButton;
     final Chronometer ownClock=recordingClock;
