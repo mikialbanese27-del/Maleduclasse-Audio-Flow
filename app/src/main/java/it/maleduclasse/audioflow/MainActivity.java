@@ -1025,8 +1025,9 @@ public final class MainActivity extends Activity {
     takeDialog=new AlertDialog.Builder(this).setView(scroll).create();
     takeDialog.setCancelable(recorder==null&&!recordingPending);
     takeDialog.setCanceledOnTouchOutside(recorder==null&&!recordingPending);
+    final java.util.ArrayList<Chronometer> ownTimers=new java.util.ArrayList<>(deckTimers.values());
     takeDialog.setOnDismissListener(d->{
-      for(Chronometer timer:deckTimers.values())timer.stop();
+      for(Chronometer timer:ownTimers)timer.stop();
     });
     takeDialog.show();
     takeDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
@@ -1040,22 +1041,25 @@ public final class MainActivity extends Activity {
     renderRecorderState();
   }
   private void renderRecorderState(){
-    if(recorderButton==null)return;
-    boolean recording=recorder!=null;
-    boolean hasAudio=deckAudioFile!=null&&deckAudioFile.exists();
-    boolean playing=!recording&&hasAudio&&player!=null&&
-      deckAudioFile.equals(activePlayFile)&&player.isPlaying();
-    int background=recording?Color.rgb(174,41,69):
-      hasAudio?Color.rgb(28,126,86):Color.rgb(203,45,79);
-    int border=recording?Color.rgb(255,151,169):
-      hasAudio?Color.rgb(124,249,181):Color.rgb(250,131,151);
-    recorderButton.setText(recording?"■ STOP":!hasAudio?"● REC":playing?"Ⅱ PAUSA":"▶ PLAY");
-    recorderButton.setTextSize(recording?19:20);
-    recorderButton.setTextColor(Color.WHITE);
-    recorderButton.setBackground(box(background,90,border,3));
-    recorderButton.setContentDescription(recording?"Ferma la registrazione":
-      hasAudio?playing?"Pausa audio":"Riproduci audio":"Inizia a registrare");
-    recorderButton.invalidate();
+    for(java.util.Map.Entry<String,Button> entry:deckRecordButtons.entrySet()){
+      String lid=entry.getKey();Button button=entry.getValue();
+      if(button==null)continue;
+      boolean live=recorder!=null&&lid.equals(recordingLine);
+      File current=deckCurrentAudio.get(lid);
+      boolean hasAudio=current!=null&&current.exists();
+      boolean playing=!live&&hasAudio&&player!=null&&
+        current.equals(activePlayFile)&&player.isPlaying();
+      int background=live?Color.rgb(174,41,69):
+        hasAudio?Color.rgb(28,126,86):Color.rgb(203,45,79);
+      int border=live?Color.rgb(255,151,169):
+        hasAudio?Color.rgb(124,249,181):Color.rgb(250,131,151);
+      button.setText(live?"■ STOP":!hasAudio?"● REC":playing?"Ⅱ PAUSA":"▶ PLAY");
+      button.setTextSize(live?18:19);button.setTextColor(Color.WHITE);
+      button.setBackground(box(background,90,border,3));
+      button.setContentDescription(live?"Ferma registrazione":
+        hasAudio?playing?"Pausa":"Riproduci take":"Registra battuta");
+      button.invalidate();
+    }
   }
   private void startRecord(String lid,boolean provisional){
     if(recorder!=null){toast("Registrazione già in corso");return;}
@@ -1139,6 +1143,7 @@ public final class MainActivity extends Activity {
         if(pendingPreferred)store.setPreferred(pid(),lid,dest.getName());
         pendingPreferred=false;recordingProvisional=false;
         selectedTakeName=dest.getName();
+        deckTakeSelection.put(lid,dest.getName());
         recordingPending=false;recordingFile=null;recordingLine="";
         if(reviewDialog!=null){reviewDialog.dismiss();reviewDialog=null;}
         if(line!=null)showTakeDialog(line);
