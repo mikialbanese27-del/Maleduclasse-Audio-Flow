@@ -774,257 +774,270 @@ public final class MainActivity extends Activity {
       player.seekTo((int)(player.getDuration()*progress/1000L));
     }catch(Exception ex){toast("Impossibile scorrere audio: "+ex.getMessage());}
   }
-  private void showTakeDialog(JSONObject line){
-    if(active==null||line==null)return;
-    if(takeDialog!=null&&takeDialog.isShowing())takeDialog.dismiss();
-    if(player!=null){try{player.stop();player.release();}catch(Exception ignored){}player=null;activePlayFile=null;}
-    if(deckSeekTick!=null)ui.removeCallbacks(deckSeekTick);
-    String lid=MobileStore.str(line,"id");selectedLine=lid;
-    File[] takes=store.takes(pid(),lid);
-    File current=null;
-    for(File take:takes)if(take.getName().equals(selectedTakeName)){current=take;break;}
-    if(current==null&&takes.length>0){current=takes[takes.length-1];selectedTakeName=current.getName();}
-    boolean pending=recordingPending&&lid.equals(recordingLine);
-    File selectedAudio=pending?recordingFile:current;
-    deckAudioFile=selectedAudio;
-    boolean complete=takes.length>0;
-    boolean preferred=current!=null&&store.isPreferred(pid(),lid,current.getName());
-    boolean provisional=current!=null&&store.isProvisional(pid(),lid,current.getName());
-    final View[] contextZone=new View[1];
-    final View[] seekZone=new View[1];
-    ScrollView scroll=new ScrollView(this){
-      private float startX,startY,rawStartX,rawStartY;
-      private boolean blocked;
-      @Override public boolean dispatchTouchEvent(MotionEvent e){
-        if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
-          startX=e.getX();startY=e.getY();
-          rawStartX=e.getRawX();rawStartY=e.getRawY();
-          blocked=false;
-          for(View zone:new View[]{contextZone[0],seekZone[0]}){
-            if(zone==null)continue;
-            android.graphics.Rect rect=new android.graphics.Rect();
-            if(zone.getGlobalVisibleRect(rect)&&rect.contains((int)rawStartX,(int)rawStartY)){
-              blocked=true;break;
-            }
-          }
-        }
-        if(e.getActionMasked()==MotionEvent.ACTION_UP&&!blocked){
-          float dx=e.getX()-startX,dy=e.getY()-startY;
-          if(Math.abs(dy)>dp(65)&&Math.abs(dy)>Math.abs(dx)*1.2f){
-            final int movement=dy<0?1:-1;
-            post(()->navigateDeck(line,movement));return true;
-          }
-          if(Math.abs(dx)>dp(65)&&Math.abs(dx)>Math.abs(dy)*1.2f){
-            final int movement=dx<0?1:-1;
-            post(()->shiftDeckTake(line,movement));return true;
-          }
-        }
-        return super.dispatchTouchEvent(e);
-      }
-    };
-    scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
-    LinearLayout pane=column();pane.setPadding(dp(17),dp(20),dp(17),dp(38));
-    pane.setBackgroundColor(Color.rgb(17,13,27));scroll.addView(pane);
-    ArrayList<JSONObject> same=characterLines(line);
-    int linePos=0;
-    for(int i=0;i<same.size();i++)if(lid.equals(MobileStore.str(same.get(i),"id")))linePos=i;
-    final int pos=linePos;
-    TextView heading=label(MobileStore.characterName(line,cast),30,YELLOW,true);
-    heading.setGravity(Gravity.CENTER);
-    pane.addView(heading,new LinearLayout.LayoutParams(-1,dp(56)));
-    TextView counter=label("BATTUTA "+(pos+1)+" DI "+same.size(),15,Color.rgb(199,176,232),true);
-    counter.setGravity(Gravity.CENTER);pane.addView(counter);
-    TextView phrase=label(MobileStore.str(line,"text"),24,TEXT,true);
-    phrase.setGravity(Gravity.CENTER);
-    LinearLayout.LayoutParams phraseLp=new LinearLayout.LayoutParams(-1,-2);
-    phraseLp.setMargins(dp(5),dp(18),dp(5),dp(17));pane.addView(phrase,phraseLp);
-    int dialSize=Math.min(dp(302),getResources().getDisplayMetrics().widthPixels-dp(52));
-    FrameLayout dial=new FrameLayout(this){
-      private float swipeX,swipeY;private boolean gestureStarted;
-      @Override public boolean dispatchTouchEvent(MotionEvent e){
-        if(e.getActionMasked()==MotionEvent.ACTION_DOWN){
-          swipeX=e.getX();swipeY=e.getY();gestureStarted=true;
-        }
-        if(e.getActionMasked()==MotionEvent.ACTION_UP&&gestureStarted){
-          gestureStarted=false;
-          float dx=e.getX()-swipeX,dy=e.getY()-swipeY;
-          if(Math.max(Math.abs(dx),Math.abs(dy))>dp(42)){
-            if(Math.abs(dy)>Math.abs(dx)*1.25f)navigateDeck(line,dy<0?1:-1);
-            else if(Math.abs(dx)>Math.abs(dy)*1.25f)shiftDeckTake(line,dx<0?1:-1);
-            return true;
-          }
-        }
-        if(e.getActionMasked()==MotionEvent.ACTION_CANCEL)gestureStarted=false;
-        return super.dispatchTouchEvent(e);
-      }
-    };
-    RecorderDialView face=new RecorderDialView(this);face.state(complete,recorder!=null,pending);
-    dial.addView(face,new FrameLayout.LayoutParams(-1,-1));
-    // Gestures are captured at the dial container so children cannot hide them.
-    LinearLayout dialContent=column();dialContent.setGravity(Gravity.CENTER);
-    FrameLayout.LayoutParams overlay=new FrameLayout.LayoutParams(-1,-1);dial.addView(dialContent,overlay);
-    LinearLayout controls=row();controls.setGravity(Gravity.CENTER);
-    Button accept=iconButton("✓",Color.rgb(77,235,151),()->{
-      if(recorder!=null){toast("Premi STOP prima di confermare");return;}
-      if(pending)completeReview(line,true);
-      else if(selectedAudio!=null)toast("Questa take è già confermata");
-    });
-    accept.setTextSize(27);controls.addView(accept,new LinearLayout.LayoutParams(dp(57),dp(55)));
-    recorderButton=new Button(this);recorderButton.setAllCaps(false);
-    recorderButton.setTypeface(Typeface.DEFAULT,Typeface.BOLD);recorderButton.setTextColor(Color.WHITE);
-    recorderButton.setOnClickListener(v->{
-      if(recorder!=null){stopRecord();return;}
-      if(selectedAudio!=null){playTake(selectedAudio,recorderButton);return;}
-      startRecord(lid,false);
-    });
-    LinearLayout.LayoutParams recLp=new LinearLayout.LayoutParams(dp(108),dp(108));
-    recLp.setMargins(dp(7),0,dp(7),0);controls.addView(recorderButton,recLp);
-    Button discard=iconButton("✕",Color.rgb(255,110,143),()->{
-      if(recorder!=null){toast("Premi STOP prima di scartare");return;}
-      if(pending){completeReview(line,false);return;}
-      if(selectedAudio!=null)confirm("Elimina take?","Questa registrazione verrà rimossa dal telefono.",
-          "Elimina",()->{
-            if(selectedAudio.delete()){
-              store.queueDeletion(pid(),lid,selectedAudio.getName());
-              selectedTakeName="";showTakeDialog(line);
-            }else toast("Non posso eliminare questa take");
-          });
-    });
-    discard.setTextSize(27);controls.addView(discard,new LinearLayout.LayoutParams(dp(57),dp(55)));
-    dialContent.addView(controls);
-    recordingClock=new Chronometer(this);recordingClock.setTextColor(TEXT);
-    recordingClock.setTextSize(24);recordingClock.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);
-    recordingClock.setGravity(Gravity.CENTER);
-    if(recorder!=null){
-      recordingClock.setBase(deckRecordStartMs>0?deckRecordStartMs:SystemClock.elapsedRealtime());
-      recordingClock.start();
-    }else if(selectedAudio!=null){
-      long durationMs=pending?deckLastDurationMs:audioLength(selectedAudio);
-      recordingClock.setBase(SystemClock.elapsedRealtime()-durationMs);
-    }
-    dialContent.addView(recordingClock,new LinearLayout.LayoutParams(-1,dp(42)));
-    LinearLayout extras=row();extras.setGravity(Gravity.CENTER);
-    Button favorite=iconButton((pending?pendingPreferred:preferred)?"★":"☆",YELLOW,()->{
-      if(pending){pendingPreferred=!pendingPreferred;showTakeDialog(line);}
-      else if(selectedAudio!=null){store.setPreferred(pid(),lid,selectedAudio.getName());showTakeDialog(line);}
-    });
-    favorite.setTextSize(24);extras.addView(favorite,new LinearLayout.LayoutParams(dp(48),dp(47)));
-    Button add=iconButton("+",PURPLE,()->{
-      if(recorder!=null||pending){toast("Conferma prima il take attuale");return;}
-      startRecord(lid,false);
-    });
-    add.setTextSize(25);LinearLayout.LayoutParams plusLp=new LinearLayout.LayoutParams(dp(48),dp(47));
-    plusLp.setMargins(dp(8),0,dp(8),0);extras.addView(add,plusLp);
-    Button temporary=iconButton((pending?recordingProvisional:provisional)?"◷":"◴",PURPLE,()->{
-      if(pending){recordingProvisional=!recordingProvisional;showTakeDialog(line);}
-      else if(selectedAudio!=null){store.setProvisional(pid(),lid,selectedAudio.getName(),!provisional);showTakeDialog(line);}
-    });
-    temporary.setTextSize(28);extras.addView(temporary,new LinearLayout.LayoutParams(dp(48),dp(47)));
-    dialContent.addView(extras);
-    LinearLayout.LayoutParams dialLp=new LinearLayout.LayoutParams(dialSize,dialSize);
-    dialLp.gravity=Gravity.CENTER;dialLp.setMargins(0,dp(15),0,dp(14));pane.addView(dial,dialLp);
-    renderRecorderState();
 
-    if(pending){
-      TextView reviewHint=label("TAKE DA CONFERMARE",12,YELLOW,true);
-      reviewHint.setGravity(Gravity.CENTER);pane.addView(reviewHint);
+  private void showTakeDialog(JSONObject requestedLine){
+    if(active==null||requestedLine==null)return;
+    String requestedId=MobileStore.str(requestedLine,"id");
+    ArrayList<JSONObject> lines=characterLines(requestedLine);
+    if(lines.isEmpty()){toast("Nessuna battuta per questo personaggio");return;}
+    String character=MobileStore.characterName(requestedLine,cast);
+    String characterKey=pid()+":"+MobileStore.str(requestedLine,"character_id")+":"+character;
+    boolean sameDeck=characterKey.equals(deckCharacterKey);
+    int priorScroll=takeDialog!=null&&takeDialog.isShowing()&&deckScroller!=null&&sameDeck
+      ?deckScroller.getScrollY():-1;
+    if(takeDialog!=null&&takeDialog.isShowing())takeDialog.dismiss();
+    if(deckSeekTick!=null)ui.removeCallbacks(deckSeekTick);
+    if(player!=null){
+      try{player.stop();player.release();}catch(Exception ignored){}
+      player=null;activePlayFile=null;
     }
-    if(selectedAudio!=null){
-      LinearLayout audio=row();audio.setGravity(Gravity.CENTER_VERTICAL);
-      Button playback=iconButton("▶",YELLOW,()->{});
-      playback.setOnClickListener(v->playTake(selectedAudio,playback));
-      audio.addView(playback,new LinearLayout.LayoutParams(dp(48),dp(47)));
-      SeekBar seek=new SeekBar(this);seek.setMax(1000);
-      seek.setProgressTintList(ColorStateList.valueOf(PURPLE));
-      seek.setThumbTintList(ColorStateList.valueOf(YELLOW));
-      audio.addView(seek,new LinearLayout.LayoutParams(0,dp(52),1));seekZone[0]=seek;
-      long length=audioLength(selectedAudio);
-      TextView time=label("00:00 / "+(length/1000)+"s",11,TEXT,false);
-      audio.addView(time);
-      seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-        public void onProgressChanged(SeekBar bar,int progress,boolean user){
-          if(user)seekDeck(selectedAudio,progress);
-        }
-        public void onStartTrackingTouch(SeekBar bar){}
-        public void onStopTrackingTouch(SeekBar bar){}
+    activePlayButton=null;
+    deckCharacterKey=characterKey;
+    deckRecordButtons.clear();deckCurrentAudio.clear();deckTimers.clear();
+    ScrollView scroll=new ScrollView(this);
+    scroll.setFillViewport(false);scroll.setVerticalScrollBarEnabled(false);
+    scroll.setBackgroundColor(Color.rgb(17,13,27));deckScroller=scroll;
+    LinearLayout content=column();content.setPadding(dp(16),dp(17),dp(16),dp(40));
+    scroll.addView(content);
+    TextView heading=label(character,29,YELLOW,true);heading.setGravity(Gravity.CENTER);
+    content.addView(heading,new LinearLayout.LayoutParams(-1,dp(54)));
+    TextView subhead=label(lines.size()+" battute · scorri per registrarle",12,Color.rgb(194,177,213),false);
+    subhead.setGravity(Gravity.CENTER);content.addView(subhead);
+    java.util.Map<String,View> lineCards=new java.util.HashMap<>();
+    int completed=0;
+    for(int index=0;index<lines.size();index++){
+      final JSONObject item=lines.get(index);
+      final String lid=MobileStore.str(item,"id");
+      final int sequence=index+1;
+      File[] takes=store.takes(pid(),lid);
+      boolean complete=takes.length>0&&!"rerecord".equals(MobileStore.str(item,"status"));
+      if(complete)completed++;
+      String selectedName=deckTakeSelection.get(lid);
+      File chosen=null;
+      for(File take:takes)if(take.getName().equals(selectedName)){chosen=take;break;}
+      if(chosen==null&&takes.length>0){
+        chosen=takes[takes.length-1];deckTakeSelection.put(lid,chosen.getName());
+      }
+      boolean pending=recordingPending&&lid.equals(recordingLine);
+      File audio=pending?recordingFile:chosen;
+      boolean preferred=chosen!=null&&store.isPreferred(pid(),lid,chosen.getName());
+      boolean provisional=chosen!=null&&store.isProvisional(pid(),lid,chosen.getName());
+      deckCurrentAudio.put(lid,audio);
+      LinearLayout card=column();card.setPadding(dp(12),dp(15),dp(12),dp(16));
+      card.setBackground(box(Color.rgb(31,24,43),20,
+        complete?Color.rgb(61,182,124):Color.rgb(173,63,91),2));
+      LinearLayout.LayoutParams cardLp=new LinearLayout.LayoutParams(-1,-2);
+      cardLp.setMargins(0,dp(17),0,dp(8));content.addView(card,cardLp);
+      lineCards.put(lid,card);
+      TextView count=label("BATTUTA "+sequence+" DI "+lines.size(),14,Color.rgb(201,179,234),true);
+      count.setGravity(Gravity.CENTER);card.addView(count);
+      TextView sentence=label(MobileStore.str(item,"text"),20,TEXT,true);
+      sentence.setGravity(Gravity.CENTER);
+      LinearLayout.LayoutParams sentenceLp=new LinearLayout.LayoutParams(-1,-2);
+      sentenceLp.setMargins(dp(3),dp(11),dp(3),dp(5));card.addView(sentence,sentenceLp);
+      final int diameter=Math.min(dp(292),getResources().getDisplayMetrics().widthPixels-dp(78));
+      FrameLayout dial=new FrameLayout(this);
+      RecorderDialView ring=new RecorderDialView(this);
+      ring.state(complete,recorder!=null&&lid.equals(recordingLine),pending);
+      dial.addView(ring,new FrameLayout.LayoutParams(-1,-1));
+      LinearLayout dialContent=column();dialContent.setGravity(Gravity.CENTER);
+      dial.addView(dialContent,new FrameLayout.LayoutParams(-1,-1));
+      LinearLayout mainControls=row();mainControls.setGravity(Gravity.CENTER);
+      Button accept=iconButton("✓",Color.rgb(77,235,151),()->{
+        if(recorder!=null){toast("Ferma prima la registrazione");return;}
+        if(recordingPending&&lid.equals(recordingLine))completeReview(item,true);
+        else toast("Take già confermata");
       });
-      if(deckSeekTick!=null)ui.removeCallbacks(deckSeekTick);
-      deckSeekTick=new Runnable(){
-        public void run(){
-          if(!audio.isAttachedToWindow())return;
-          if(player!=null&&selectedAudio.equals(activePlayFile)){
-            try{
-              int dur=player.getDuration(),now=player.getCurrentPosition();
-              if(dur>0){seek.setProgress((int)(now*1000L/dur));time.setText((now/1000)+"s / "+(dur/1000)+"s");}
-            }catch(Exception ignored){}
-          }
-          ui.postDelayed(this,180);
+      accept.setTextSize(26);
+      mainControls.addView(accept,new LinearLayout.LayoutParams(dp(53),dp(53)));
+      Button center=new Button(this);center.setAllCaps(false);
+      center.setTypeface(Typeface.DEFAULT,Typeface.BOLD);center.setTextColor(Color.WHITE);
+      deckRecordButtons.put(lid,center);
+      center.setOnClickListener(v->{
+        if(recorder!=null){
+          if(lid.equals(recordingLine))stopRecord();
+          else toast("Termina prima la registrazione in corso");
+        }else if(recordingPending&&!lid.equals(recordingLine)){
+          toast("Conferma o scarta la take ancora in sospeso");
+        }else{
+          File source=deckCurrentAudio.get(lid);
+          if(source!=null&&source.exists()){
+            activePlayButton=center;playTake(source,center);
+          }else startRecord(lid,false);
         }
-      };
-      pane.addView(audio);ui.postDelayed(deckSeekTick,180);
+      });
+      LinearLayout.LayoutParams centerLp=new LinearLayout.LayoutParams(dp(106),dp(106));
+      centerLp.setMargins(dp(6),0,dp(6),0);mainControls.addView(center,centerLp);
+      Button reject=iconButton("✕",Color.rgb(255,115,144),()->{
+        if(recorder!=null){toast("Ferma prima la registrazione");return;}
+        if(recordingPending&&lid.equals(recordingLine)){completeReview(item,false);return;}
+        File source=deckCurrentAudio.get(lid);
+        if(source==null)return;
+        confirm("Eliminare questa take?","Le altre take della battuta restano disponibili.",
+          "Elimina",()->{
+            if(source.delete()){
+              store.queueDeletion(pid(),lid,source.getName());
+              deckTakeSelection.remove(lid);showTakeDialog(item);
+            }else toast("Impossibile eliminare la registrazione");
+          });
+      });
+      reject.setTextSize(26);
+      mainControls.addView(reject,new LinearLayout.LayoutParams(dp(53),dp(53)));
+      dialContent.addView(mainControls);
+      Chronometer timer=new Chronometer(this);
+      timer.setTextColor(TEXT);timer.setTextSize(23);
+      timer.setTypeface(Typeface.MONOSPACE,Typeface.BOLD);timer.setGravity(Gravity.CENTER);
+      deckTimers.put(lid,timer);
+      if(recorder!=null&&lid.equals(recordingLine)){
+        timer.setBase(deckRecordStartMs>0?deckRecordStartMs:SystemClock.elapsedRealtime());
+        timer.start();
+      }else if(audio!=null){
+        long dur=pending?deckLastDurationMs:audioLength(audio);
+        timer.setBase(SystemClock.elapsedRealtime()-dur);
+      }else timer.setBase(SystemClock.elapsedRealtime());
+      dialContent.addView(timer,new LinearLayout.LayoutParams(-1,dp(42)));
+      LinearLayout extras=row();extras.setGravity(Gravity.CENTER);
+      Button star=iconButton((pending?pendingPreferred:preferred)?"★":"☆",YELLOW,()->{
+        if(pending){pendingPreferred=!pendingPreferred;showTakeDialog(item);}
+        else{
+          File src=deckCurrentAudio.get(lid);
+          if(src!=null){store.setPreferred(pid(),lid,src.getName());showTakeDialog(item);}
+        }
+      });
+      star.setTextSize(24);extras.addView(star,new LinearLayout.LayoutParams(dp(47),dp(46)));
+      Button extra=iconButton("+",PURPLE,()->{
+        if(recorder!=null||recordingPending){
+          toast("Conferma prima la registrazione corrente");return;
+        }
+        startRecord(lid,false);
+      });
+      extra.setContentDescription("Registra un'altra take");
+      extra.setTextSize(24);
+      LinearLayout.LayoutParams extraLp=new LinearLayout.LayoutParams(dp(47),dp(46));
+      extraLp.setMargins(dp(8),0,dp(8),0);extras.addView(extra,extraLp);
+      Button provisionalButton=iconButton((pending?recordingProvisional:provisional)?"◷":"◴",PURPLE,()->{
+        if(pending){recordingProvisional=!recordingProvisional;showTakeDialog(item);}
+        else{
+          File src=deckCurrentAudio.get(lid);
+          if(src!=null){store.setProvisional(pid(),lid,src.getName(),!provisional);showTakeDialog(item);}
+        }
+      });
+      provisionalButton.setTextSize(28);
+      extras.addView(provisionalButton,new LinearLayout.LayoutParams(dp(47),dp(46)));
+      dialContent.addView(extras);
+      LinearLayout.LayoutParams dialLp=new LinearLayout.LayoutParams(diameter,diameter);
+      dialLp.gravity=Gravity.CENTER;dialLp.setMargins(0,dp(9),0,dp(7));
+      card.addView(dial,dialLp);
       if(pending){
-        View waveform=waveformPreview();
-        pane.addView(waveform,new LinearLayout.LayoutParams(-1,dp(62)));
+        TextView pendingLabel=label("TAKE DA CONFERMARE",12,YELLOW,true);
+        pendingLabel.setGravity(Gravity.CENTER);card.addView(pendingLabel);
+        card.addView(waveformPreview(),new LinearLayout.LayoutParams(-1,dp(48)));
       }
-    }
-    if(takes.length>1&&!pending){
-      TextView takeHeading=label("LE TUE TAKE",11,Color.rgb(187,159,224),true);
-      LinearLayout.LayoutParams headingLp=new LinearLayout.LayoutParams(-1,-2);
-      headingLp.setMargins(dp(5),dp(8),0,dp(5));pane.addView(takeHeading,headingLp);
-      HorizontalScrollView takeScroller=new HorizontalScrollView(this);
-      takeScroller.setHorizontalScrollBarEnabled(false);
-      LinearLayout takeTabs=row();
-      for(int index=0;index<takes.length;index++){
-        final File take=takes[index];
-        boolean chosen=take.getName().equals(selectedTakeName);
-        Button chip=btn("Take "+(index+1)+(store.isPreferred(pid(),lid,take.getName())?" ★":""),chosen?YELLOW:PURPLE,()->{
-          selectedTakeName=take.getName();showTakeDialog(line);
+      if(audio!=null){
+        LinearLayout playbackRow=row();playbackRow.setGravity(Gravity.CENTER_VERTICAL);
+        Button play=iconButton("▶",YELLOW,()->{});
+        play.setOnClickListener(v->{
+          activePlayButton=play;playTake(audio,play);
         });
-        chip.setTextColor(chosen?YELLOW:TEXT);
-        LinearLayout.LayoutParams chipLp=new LinearLayout.LayoutParams(-2,dp(40));
-        chipLp.setMargins(dp(3),0,dp(8),0);takeTabs.addView(chip,chipLp);
+        playbackRow.addView(play,new LinearLayout.LayoutParams(dp(43),dp(43)));
+        SeekBar seek=new SeekBar(this);seek.setMax(1000);
+        seek.setProgressTintList(ColorStateList.valueOf(PURPLE));
+        seek.setThumbTintList(ColorStateList.valueOf(YELLOW));
+        playbackRow.addView(seek,new LinearLayout.LayoutParams(0,dp(43),1));
+        TextView duration=label((audioLength(audio)/1000)+"s",11,TEXT,false);
+        playbackRow.addView(duration);
+        seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+          public void onProgressChanged(SeekBar bar,int progress,boolean fromUser){
+            if(fromUser)seekDeck(audio,progress);
+          }
+          public void onStartTrackingTouch(SeekBar bar){}
+          public void onStopTrackingTouch(SeekBar bar){}
+        });
+        card.addView(playbackRow);
+        // The callback only updates while this card's file is playing.
+        Runnable refresh=new Runnable(){
+          @Override public void run(){
+            if(!playbackRow.isAttachedToWindow())return;
+            if(player!=null&&audio.equals(activePlayFile)){
+              try{
+                int dur=player.getDuration(),at=player.getCurrentPosition();
+                if(dur>0)seek.setProgress((int)(1000L*at/dur));
+              }catch(Exception ignored){}
+            }
+            ui.postDelayed(this,210);
+          }
+        };
+        ui.postDelayed(refresh,210);
       }
-      takeScroller.addView(takeTabs);pane.addView(takeScroller);
+      if(takes.length>0){
+        TextView labelTakes=label("LE TUE TAKE",11,Color.rgb(200,178,232),true);
+        card.addView(labelTakes);
+        HorizontalScrollView selector=new HorizontalScrollView(this);
+        selector.setHorizontalScrollBarEnabled(false);
+        LinearLayout chips=row();chips.setPadding(0,dp(7),0,dp(5));
+        for(int n=0;n<takes.length;n++){
+          File take=takes[n];
+          boolean selected=chosen!=null&&take.getName().equals(chosen.getName());
+          Button chip=btn("Take "+(n+1)+(store.isPreferred(pid(),lid,take.getName())?" ★":""),selected?YELLOW:PURPLE,()->{
+            if(recordingPending||recorder!=null){toast("Completa prima la registrazione");return;}
+            deckTakeSelection.put(lid,take.getName());
+            showTakeDialog(item);
+          });
+          chip.setTextColor(selected?YELLOW:TEXT);
+          LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-2,dp(41));
+          cp.setMargins(dp(2),0,dp(7),0);chips.addView(chip,cp);
+        }
+        selector.addView(chips);card.addView(selector);
+      }
     }
-    // Entire screenplay, not a truncated selection. Its own scrolling is independent.
-    String fullScript=MobileStore.str(active,"script");
-    if(!fullScript.isEmpty()){
-      TextView contextHeading=label("CONTESTO DEL COPIONE",11,Color.rgb(190,161,224),true);
-      LinearLayout.LayoutParams contextTitleLp=new LinearLayout.LayoutParams(-1,-2);
-      contextTitleLp.setMargins(dp(5),dp(16),0,dp(5));pane.addView(contextHeading,contextTitleLp);
-      ScrollView contextScroll=new ScrollView(this);
-      contextScroll.setVerticalScrollBarEnabled(true);
-      contextScroll.setNestedScrollingEnabled(true);
-      contextScroll.setBackground(box(Color.rgb(36,30,50),14,Color.rgb(104,73,149),1));
-      TextView contextText=label(fullScript,13,Color.rgb(216,206,228),false);
-      contextText.setPadding(dp(13),dp(12),dp(13),dp(12));
-      contextText.setTextIsSelectable(false);
-      contextScroll.addView(contextText);
-      contextScroll.setOnTouchListener((v,e)->{
-        if(e.getActionMasked()==MotionEvent.ACTION_DOWN ||
+    TextView result;
+    if(completed==lines.size()&&!recordingPending){
+      result=label("✓  DOPPIAGGI COMPLETATI",17,Color.rgb(87,238,151),true);
+    }else{
+      result=label(completed+" / "+lines.size()+" battute completate",
+        14,Color.rgb(197,179,217),true);
+    }
+    result.setGravity(Gravity.CENTER);
+    LinearLayout.LayoutParams resultLp=new LinearLayout.LayoutParams(-1,dp(65));
+    resultLp.setMargins(0,dp(14),0,dp(8));content.addView(result,resultLp);
+    // Read-only context with access to the entire screenplay.
+    String script=MobileStore.str(active,"script");
+    if(!script.isEmpty()){
+      TextView contextLabel=label("CONTESTO DEL COPIONE",12,Color.rgb(194,166,232),true);
+      content.addView(contextLabel);
+      ScrollView context=new ScrollView(this);context.setFillViewport(false);
+      context.setVerticalScrollBarEnabled(true);context.setNestedScrollingEnabled(true);
+      context.setBackground(box(Color.rgb(34,28,49),14,Color.rgb(111,78,160),1));
+      TextView text=label(script,13,TEXT,false);
+      text.setPadding(dp(12),dp(11),dp(12),dp(11));context.addView(text);
+      context.setOnTouchListener((v,e)->{
+        if(e.getActionMasked()==MotionEvent.ACTION_DOWN||
            e.getActionMasked()==MotionEvent.ACTION_MOVE)
           v.getParent().requestDisallowInterceptTouchEvent(true);
-        if(e.getActionMasked()==MotionEvent.ACTION_UP ||
+        if(e.getActionMasked()==MotionEvent.ACTION_UP||
            e.getActionMasked()==MotionEvent.ACTION_CANCEL)
           v.getParent().requestDisallowInterceptTouchEvent(false);
         return false;
       });
-      contextZone[0]=contextScroll;
-      LinearLayout.LayoutParams contextLp=new LinearLayout.LayoutParams(-1,dp(125));
-      contextLp.setMargins(0,0,0,dp(10));pane.addView(contextScroll,contextLp);
+      LinearLayout.LayoutParams contextLp=new LinearLayout.LayoutParams(-1,dp(130));
+      contextLp.setMargins(0,dp(8),0,dp(5));content.addView(context,contextLp);
     }
     takeDialog=new AlertDialog.Builder(this).setView(scroll).create();
-    final Button ownButton=recorderButton;
-    final Chronometer ownClock=recordingClock;
-    takeDialog.setOnDismissListener(dialog->{
-      if(recordingClock==ownClock){recordingClock.stop();recordingClock=null;}
-      if(recorderButton==ownButton)recorderButton=null;
+    takeDialog.setCancelable(recorder==null&&!recordingPending);
+    takeDialog.setCanceledOnTouchOutside(recorder==null&&!recordingPending);
+    takeDialog.setOnDismissListener(d->{
+      for(Chronometer timer:deckTimers.values())timer.stop();
     });
     takeDialog.show();
     takeDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
     takeDialog.getWindow().setLayout(-1,-1);
-    takeDialog.setCancelable(recorder==null&&!pending);
-    takeDialog.setCanceledOnTouchOutside(recorder==null&&!pending);
+    // Rebuild after a state change without jumping to the first dialogue.
+    final View focused=lineCards.get(requestedId);
+    scroll.post(()->{
+      if(priorScroll>=0)scroll.scrollTo(0,priorScroll);
+      else if(focused!=null)scroll.smoothScrollTo(0,Math.max(0,focused.getTop()-dp(8)));
+    });
+    renderRecorderState();
   }
   private void renderRecorderState(){
     if(recorderButton==null)return;
