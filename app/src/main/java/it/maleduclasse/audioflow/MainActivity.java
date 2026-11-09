@@ -165,9 +165,9 @@ public final class MainActivity extends Activity {
     LinearLayout tab=column();tab.setGravity(Gravity.CENTER);
     tab.setBackground(box(selected?YELLOW:Color.rgb(27,24,39),16,selected?YELLOW:Color.rgb(83,70,105),1));
     int ink=selected?Color.rgb(38,22,65):TEXT;
-    TextView symbol=label(glyph,26,ink,true);symbol.setGravity(Gravity.CENTER);
-    symbol.setTypeface(Typeface.DEFAULT,Typeface.BOLD);
-    tab.addView(symbol,new LinearLayout.LayoutParams(-1,dp(33)));
+    int kind=destination.equals("Progetti")?0:destination.equals("Sceneggiatura")?1:2;
+    NavGlyphView symbol=new NavGlyphView(this,kind,ink);
+    tab.addView(symbol,new LinearLayout.LayoutParams(-1,dp(35)));
     TextView caption=label(title,12,ink,true);caption.setGravity(Gravity.CENTER);
     tab.addView(caption,new LinearLayout.LayoutParams(-1,dp(20)));
     tab.setContentDescription(title);tab.setOnClickListener(v->openPage(destination));
