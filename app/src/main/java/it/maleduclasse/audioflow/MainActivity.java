@@ -649,6 +649,13 @@ public final class MainActivity extends Activity {
     intent.addCategory(Intent.CATEGORY_OPENABLE);intent.setType("audio/*");
     startActivityForResult(intent,IMPORT_TAKE);
   }
+  private void refreshDubbingOverview(){
+    if(!"Doppiaggio".equals(page)||active==null||body==null)return;
+    // Rebuild only the dubbing contents; do not reinitialize the project or
+    // interfere with the record dialog, audio engine or sync.
+    body.removeAllViews();
+    renderDubbing();
+  }
   private void renderDubbing(){
     if(active==null){section("Doppiaggio",TEXT);return;}
     LinearLayout top=row();
@@ -680,7 +687,8 @@ public final class MainActivity extends Activity {
         .toLowerCase(java.util.Locale.ROOT).contains(dubbingSearch.trim().toLowerCase(java.util.Locale.ROOT))))continue;
       total++;String id=MobileStore.str(line,"id");
       File[] takes=store.takes(pid(),id);
-      boolean complete=takes.length>0&&!"rerecord".equals(MobileStore.str(line,"status"));
+      // A confirmed file is the source of truth for the red/green dubbing card.
+      boolean complete=takes.length>0;
       if(complete)ready++;
       // Keep the approved red/green cells and yellow selection stroke unchanged.
       LinearLayout cell=column();cell.setPadding(dp(13),dp(12),dp(13),dp(12));
@@ -787,7 +795,10 @@ public final class MainActivity extends Activity {
     boolean sameDeck=characterKey.equals(deckCharacterKey);
     int priorScroll=takeDialog!=null&&takeDialog.isShowing()&&deckScroller!=null&&sameDeck
       ?deckScroller.getScrollY():-1;
-    if(takeDialog!=null&&takeDialog.isShowing())takeDialog.dismiss();
+    if(takeDialog!=null&&takeDialog.isShowing()){
+      // Internal re-render (after REC, confirm or take selection) is not an exit.
+      takeDialog.setOnDismissListener(null);takeDialog.dismiss();
+    }
     if(deckSeekTick!=null)ui.removeCallbacks(deckSeekTick);
     if(player!=null){
       try{player.stop();player.release();}catch(Exception ignored){}
@@ -812,7 +823,7 @@ public final class MainActivity extends Activity {
       final String lid=MobileStore.str(item,"id");
       final int sequence=index+1;
       File[] takes=store.takes(pid(),lid);
-      boolean complete=takes.length>0&&!"rerecord".equals(MobileStore.str(item,"status"));
+      boolean complete=takes.length>0;
       if(complete)completed++;
       String selectedName=deckTakeSelection.get(lid);
       File chosen=null;
@@ -886,7 +897,9 @@ public final class MainActivity extends Activity {
           "Elimina",()->{
             if(source.delete()){
               store.queueDeletion(pid(),lid,source.getName());
-              deckTakeSelection.remove(lid);showTakeDialog(item);
+              deckTakeSelection.remove(lid);
+              refreshDubbingOverview();
+              showTakeDialog(item);
             }else toast("Impossibile eliminare la registrazione");
           });
       });
@@ -1045,6 +1058,8 @@ public final class MainActivity extends Activity {
     final java.util.ArrayList<Chronometer> ownTimers=new java.util.ArrayList<>(deckTimers.values());
     takeDialog.setOnDismissListener(d->{
       for(Chronometer timer:ownTimers)timer.stop();
+      // On the real exit, the cards behind this dialog must already be current.
+      refreshDubbingOverview();
     });
     takeDialog.show();
     takeDialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
@@ -1163,6 +1178,7 @@ public final class MainActivity extends Activity {
         pendingPreferred=false;recordingProvisional=false;
         selectedTakeName=dest.getName();
         deckTakeSelection.put(lid,dest.getName());
+        refreshDubbingOverview();
         recordingPending=false;recordingFile=null;recordingLine="";
         if(reviewDialog!=null){reviewDialog.dismiss();reviewDialog=null;}
         if(line!=null)showTakeDialog(line);
