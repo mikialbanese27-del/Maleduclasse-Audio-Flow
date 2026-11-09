@@ -53,6 +53,14 @@ public final class MainActivity extends Activity {
   private android.widget.TextView deckTimeLabel;
   private long deckRecordStartMs=0L,deckLastDurationMs=0L;
   private File deckAudioFile;
+  // The scrolling dubbing deck keeps a distinct selected take per dialogue line.
+  private final java.util.Map<String,String> deckTakeSelection=new java.util.HashMap<>();
+  private final java.util.Map<String,Button> deckRecordButtons=new java.util.LinkedHashMap<>();
+  private final java.util.Map<String,File> deckCurrentAudio=new java.util.HashMap<>();
+  private final java.util.Map<String,Chronometer> deckTimers=new java.util.HashMap<>();
+  private ScrollView deckScroller;
+  private String deckCharacterKey="";
+
 
   private Button activePlayButton;private File activePlayFile;
   private Button dictationButton;private android.speech.SpeechRecognizer speechRecognizer;
@@ -197,7 +205,7 @@ public final class MainActivity extends Activity {
     connectionDot.setContentDescription(pcOnline?"PC collegato":"PC non collegato");
     header.addView(connectionDot);
     ImageButton settings=new ImageButton(this);
-    settings.setImageResource(android.R.drawable.ic_menu_manage);
+    settings.setImageResource(android.R.drawable.ic_menu_preferences);
     settings.setColorFilter(TEXT);settings.setBackground(box(Color.rgb(29,24,41),14,PURPLE,1));
     settings.setContentDescription("Apri impostazioni");
     settings.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
@@ -645,7 +653,8 @@ public final class MainActivity extends Activity {
     TextView title=label("Doppiaggio",20,TEXT,true);top.addView(title,new LinearLayout.LayoutParams(0,-2,1));
     Button search=iconButton("⌕",YELLOW,()->openDubbingSearch());
     search.setTextSize(27);search.setContentDescription("Cerca battuta per parola chiave");
-    top.addView(search,new LinearLayout.LayoutParams(dp(46),dp(45)));
+    LinearLayout.LayoutParams searchLp=new LinearLayout.LayoutParams(dp(46),dp(45));
+    searchLp.setMargins(0,0,dp(14),0);top.addView(search,searchLp);
     Button filter=iconButton("☷",PURPLE,()->{});
     filter.setTextSize(24);filter.setContentDescription("Filtra per doppiatore o personaggio");
     filter.setOnClickListener(v->openDubbingFilter(v));
