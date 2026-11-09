@@ -205,7 +205,7 @@ public final class MainActivity extends Activity {
     connectionDot.setContentDescription(pcOnline?"PC collegato":"PC non collegato");
     header.addView(connectionDot);
     ImageButton settings=new ImageButton(this);
-    settings.setImageResource(android.R.drawable.ic_menu_preferences);
+    settings.setImageResource(R.drawable.settings_gear);
     settings.setColorFilter(TEXT);settings.setBackground(box(Color.rgb(29,24,41),14,PURPLE,1));
     settings.setContentDescription("Apri impostazioni");
     settings.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
