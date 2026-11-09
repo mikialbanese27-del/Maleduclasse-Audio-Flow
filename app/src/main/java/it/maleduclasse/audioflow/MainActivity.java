@@ -1058,6 +1058,7 @@ public final class MainActivity extends Activity {
     final java.util.ArrayList<Chronometer> ownTimers=new java.util.ArrayList<>(deckTimers.values());
     takeDialog.setOnDismissListener(d->{
       for(Chronometer timer:ownTimers)timer.stop();
+      deckArmedLines.clear();
       // On the real exit, the cards behind this dialog must already be current.
       refreshDubbingOverview();
     });
