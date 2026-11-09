@@ -60,6 +60,8 @@ public final class MainActivity extends Activity {
   private final java.util.Map<String,Chronometer> deckTimers=new java.util.HashMap<>();
   private ScrollView deckScroller;
   private String deckCharacterKey="";
+  // Pressing + only arms the next take. REC explicitly starts microphone capture.
+  private final java.util.Set<String> deckArmedLines=new java.util.HashSet<>();
 
 
   private Button activePlayButton;private File activePlayFile;
@@ -857,8 +859,15 @@ public final class MainActivity extends Activity {
         if(recorder!=null){
           if(lid.equals(recordingLine))stopRecord();
           else toast("Termina prima la registrazione in corso");
-        }else if(recordingPending&&!lid.equals(recordingLine)){
-          toast("Conferma o scarta la take ancora in sospeso");
+        }else if(recordingPending){
+          if(!lid.equals(recordingLine))toast("Conferma o scarta la take ancora in sospeso");
+          else{
+            File preview=deckCurrentAudio.get(lid);
+            if(preview!=null&&preview.exists()){activePlayButton=center;playTake(preview,center);}
+          }
+        }else if(deckArmedLines.contains(lid)){
+          // Second, explicit tap on REC: + never switches on the microphone.
+          startRecord(lid,false);
         }else{
           File source=deckCurrentAudio.get(lid);
           if(source!=null&&source.exists()){
@@ -909,7 +918,15 @@ public final class MainActivity extends Activity {
         if(recorder!=null||recordingPending){
           toast("Conferma prima la registrazione corrente");return;
         }
-        startRecord(lid,false);
+        // Arm another take, but leave the audio recorder stopped.
+        deckArmedLines.add(lid);
+        Chronometer clock=deckTimers.get(lid);
+        if(clock!=null){clock.stop();clock.setBase(SystemClock.elapsedRealtime());}
+        if(player!=null){
+          try{player.stop();player.release();}catch(Exception ignored){}
+          player=null;activePlayFile=null;resetPlayerButton();
+        }
+        renderRecorderState();
       });
       extra.setContentDescription("Registra un'altra take");
       extra.setTextSize(24);
@@ -1045,8 +1062,9 @@ public final class MainActivity extends Activity {
       String lid=entry.getKey();Button button=entry.getValue();
       if(button==null)continue;
       boolean live=recorder!=null&&lid.equals(recordingLine);
+      boolean armed=deckArmedLines.contains(lid)&&!live;
       File current=deckCurrentAudio.get(lid);
-      boolean hasAudio=current!=null&&current.exists();
+      boolean hasAudio=current!=null&&current.exists()&&!armed;
       boolean playing=!live&&hasAudio&&player!=null&&
         current.equals(activePlayFile)&&player.isPlaying();
       int background=live?Color.rgb(174,41,69):
@@ -1057,7 +1075,7 @@ public final class MainActivity extends Activity {
       button.setTextSize(live?18:19);button.setTextColor(Color.WHITE);
       button.setBackground(box(background,90,border,3));
       button.setContentDescription(live?"Ferma registrazione":
-        hasAudio?playing?"Pausa":"Riproduci take":"Registra battuta");
+        armed?"Inizia la nuova take":hasAudio?playing?"Pausa":"Riproduci take":"Registra battuta");
       button.invalidate();
     }
   }
@@ -1078,6 +1096,7 @@ public final class MainActivity extends Activity {
       recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
       recorder.setAudioSamplingRate(44100);recorder.setAudioEncodingBitRate(128000);
       recorder.setOutputFile(recordingFile.getAbsolutePath());recorder.prepare();recorder.start();
+      deckArmedLines.remove(lid);
       deckRecordStartMs=SystemClock.elapsedRealtime();pendingPreferred=false;
       capturedPeaks.clear();ui.removeCallbacks(sampleAmplitude);ui.postDelayed(sampleAmplitude,110);
       if(recordingClock!=null){recordingClock.setBase(SystemClock.elapsedRealtime());recordingClock.start();}
