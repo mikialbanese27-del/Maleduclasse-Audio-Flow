@@ -28,7 +28,7 @@ import java.nio.charset.StandardCharsets;
 /** Full mobile-first editor: Projects, Script, Cast, Dubbing; timeline/sound library live on PC. */
 public final class MainActivity extends Activity {
   private static final int MIC=101,IMPORT_WORD=102,IMPORT_TAKE=103,DICTATE=104,IMPORT_EPISODE=105,IMPORT_AVATAR=106;
-  private String avatarTarget="";
+  private String avatarTarget="",importTakeTargetLine="",dubbingSearch="";
   private final int BG=Color.rgb(20,18,29),PANEL=Color.rgb(36,31,48),TEXT=Color.rgb(244,241,248);
   private final int PURPLE=Color.rgb(168,112,255),YELLOW=Color.rgb(201,255,87),GREEN=Color.rgb(27,118,78),RED=Color.rgb(170,52,77),BROWN=Color.rgb(110,80,140);
   private MobileStore store;private MobileSync sync;
@@ -181,12 +181,19 @@ public final class MainActivity extends Activity {
     getWindow().setStatusBarColor(Color.rgb(18,15,29));
     getWindow().setNavigationBarColor(Color.rgb(18,15,29));
     LinearLayout header=row();header.setGravity(Gravity.CENTER_VERTICAL);
-    header.setPadding(dp(12),dp(5),dp(10),dp(5));header.setBackgroundColor(Color.rgb(26,23,36));
+    header.setPadding(dp(8),dp(3),dp(10),dp(3));header.setBackgroundColor(Color.rgb(26,23,36));
     View brand=BrandLogo.view(this);
-    // Logo belongs at the extreme start of the header, not in a centered spacer.
-    header.addView(brand,new LinearLayout.LayoutParams(dp(50),dp(51)));
-    header.addView(new View(this),new LinearLayout.LayoutParams(0,dp(48),1));
-    connectionDot=label("●",22,pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102),true);
+    brand.setContentDescription("Apri navigazione");
+    brand.setOnClickListener(v->choiceSheet("Navigazione",new String[]{"▦  Progetti","✎  Scrivi","🎙  Doppiaggio"},index->{
+      openPage(index==0?"Progetti":index==1?"Sceneggiatura":"Doppiaggio");
+    }));
+    header.addView(brand,new LinearLayout.LayoutParams(dp(49),dp(49)));
+    TextView headerTitle=label(active==null?"Maleduclasse":MobileStore.str(active,"title"),
+      15,TEXT,true);headerTitle.setGravity(Gravity.CENTER);headerTitle.setMaxLines(1);
+    headerTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+    LinearLayout.LayoutParams ht=new LinearLayout.LayoutParams(0,dp(48),1);
+    ht.setMargins(dp(3),0,dp(4),0);header.addView(headerTitle,ht);
+    connectionDot=label("●",20,pcOnline?Color.rgb(63,204,139):Color.rgb(235,84,102),true);
     connectionDot.setContentDescription(pcOnline?"PC collegato":"PC non collegato");
     header.addView(connectionDot);
     ImageButton settings=new ImageButton(this);
@@ -194,12 +201,10 @@ public final class MainActivity extends Activity {
     settings.setColorFilter(TEXT);settings.setBackground(box(Color.rgb(29,24,41),14,PURPLE,1));
     settings.setContentDescription("Apri impostazioni");
     settings.setScaleType(android.widget.ImageView.ScaleType.CENTER_INSIDE);
-    settings.setPadding(dp(12),dp(12),dp(12),dp(12));
+    settings.setPadding(dp(10),dp(10),dp(10),dp(10));
     settings.setOnClickListener(v->showSettingsMenu(v));
-    LinearLayout.LayoutParams settingsLp=new LinearLayout.LayoutParams(dp(50),dp(46));
+    LinearLayout.LayoutParams settingsLp=new LinearLayout.LayoutParams(dp(44),dp(44));
     settingsLp.setMargins(dp(9),0,0,0);header.addView(settings,settingsLp);root.addView(header);
-    TextView projectLabel=label(active==null?"Scegli un episodio":MobileStore.str(active,"title"),13,Color.rgb(186,176,203),false);
-    projectLabel.setMaxLines(1);root.addView(projectLabel);
     if(page.equals("Sceneggiatura")&&active!=null)addScriptPresetToolbar();
     ScrollView scroll=new ScrollView(this);scroll.setFillViewport(false);
     scroll.setVerticalScrollBarEnabled(false);
@@ -207,27 +212,6 @@ public final class MainActivity extends Activity {
     body=column();body.setPadding(dp(12),dp(6),dp(12),dp(20));scroll.addView(body);
     switch(page){case "Progetti":renderProjects();break;case "Sceneggiatura":renderScript();break;
       case "Doppiaggio":renderDubbing();break;case "⚙ Cast":renderCast();break;default:renderSync();}
-    {
-      LinearLayout bottom=row();bottom.setGravity(Gravity.CENTER);
-      bottom.setPadding(dp(6),dp(5),dp(6),dp(7));bottom.setBackgroundColor(Color.rgb(26,23,36));
-      String[] tabs={"Progetti","Scrivi","Doppiaggio"},destinations={"Progetti","Sceneggiatura","Doppiaggio"},symbols={"▦","✎","🎙"};
-      for(int i=0;i<3;i++){
-        LinearLayout.LayoutParams navLp=new LinearLayout.LayoutParams(0,dp(58),1);
-        navLp.setMargins(dp(4),0,dp(4),0);
-        bottom.addView(navButton(symbols[i],tabs[i],destinations[i]),navLp);
-      }
-      root.addView(bottom);
-      final View navBar=bottom;
-      final View observed=root;
-      observed.getViewTreeObserver().addOnGlobalLayoutListener(()->{
-        android.graphics.Rect visible=new android.graphics.Rect();
-        observed.getWindowVisibleDisplayFrame(visible);
-        int height=observed.getRootView().getHeight();
-        boolean keyboard=height-visible.bottom>dp(160);
-        int desired=keyboard?View.GONE:View.VISIBLE;
-        if(navBar.getVisibility()!=desired)navBar.setVisibility(desired);
-      });
-    }
   }
   private void openPage(String target){if(editor!=null&&editorDirty){new AlertDialog.Builder(this).setTitle("Sceneggiatura modificata").setMessage("Salvare il copione sul telefono prima di uscire?")
       .setPositiveButton("Salva",(d,w)->{if(saveEditor())go(target);}).setNeutralButton("Non salvare",(d,w)->go(target)).setNegativeButton("Resta qui",null).show();return;}go(target);}
@@ -332,12 +316,11 @@ public final class MainActivity extends Activity {
   }
 
   private void addScriptPresetToolbar(){
-    root.addView(label("TAG RAPIDI",12,YELLOW,true));
     HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
     LinearLayout presets=row();
-    String[] names={"@ Personaggio","Scena","Azione","Pausa","SFX","Ambiente","Musica"};
-    String[] tokens={"","/scena ","/azione ","/pausa 1.5","/sfx ","/ambiente ","/musica "};
-    int[] colors={GREEN,Color.rgb(55,104,169),RED,PANEL,Color.rgb(153,65,118),BROWN,Color.rgb(140,109,38)};
+    String[] names={"@ Personaggio","Scena","Azione","Pausa","SFX"};
+    String[] tokens={"","/scena ","/azione ","/pausa 1.5","/sfx "};
+    int[] colors={GREEN,Color.rgb(55,104,169),RED,PANEL,Color.rgb(153,65,118)};
     for(int i=0;i<names.length;i++){
       final int which=i;
       Button b=btn(names[i],colors[i],()->{if(which==0)chooseCharacterInsert();else insertScriptToken(tokens[which]);});
