@@ -1,4 +1,4 @@
-# Maleduclasse Audio Flow — Android 1.3.1 / PC Mobile First v0.4
+# Maleduclasse Audio Flow — Android 1.3.2 / PC Mobile First v0.4
 
 L'app Android è il punto di partenza per creare **progetti, copioni, cast e take**. Il PC importa queste informazioni, assembla la timeline e gestisce suoni e mix.
 
@@ -8,12 +8,13 @@ L'app Android è il punto di partenza per creare **progetti, copioni, cast e tak
 - Sceneggiatura: editor con sintassi `@Personaggio`, `/scena`, tag, controllo battute, importazione DOCX e dettatura.
 - Cast: doppiatori, personaggi, assegnazioni globali e per episodio.
 - Doppiaggio: filtro doppiatore, registrazione offline, più take, import audio, ascolto, preferita/provvisoria/eliminazione.
+- Ascolta il contesto: due pulsanti ai lati del comando centrale riproducono le battute immediatamente precedente e successiva nell'ordine del copione completo, anche di altri personaggi. Riproducono la take preferita (oppure l'ultima disponibile), restano disabilitati senza audio e non interrompono la registrazione.
 - Sincronizzazione bidirezionale LAN: importa da PC oppure crea su telefono e invia al PC con ID stabili. Il PC crea la bozza dopo le take.
 - Protezione da conflitti sulle revisioni; le take precedenti sono archiviate quando il testo cambia.
 
 ## APK
 
-Android 1.3.1 (versionCode 15), compatibilità Android 8.0+.
+Android 1.3.2 (versionCode 16), compatibilità Android 8.0+.
 
 GitHub Actions → **Build Android APK** produce un pacchetto **debug** di prova e un pacchetto **release unsigned**. Nessuno dei due artefatti CI deve essere considerato la versione definitiva: la release Android viene firmata separatamente con una chiave privata conservata fuori dal repository. La chiave di firma **non va caricata su GitHub**.
 
