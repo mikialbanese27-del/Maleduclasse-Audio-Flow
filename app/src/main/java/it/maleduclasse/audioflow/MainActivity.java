@@ -785,6 +785,49 @@ public final class MainActivity extends Activity {
     }catch(Exception ex){toast("Impossibile scorrere audio: "+ex.getMessage());}
   }
 
+  // Context follows the complete script, never the actor-filtered dubbing deck.
+  private JSONObject adjacentScriptLine(String lineId,int offset){
+    if(active==null)return null;
+    JSONArray all=active.optJSONArray("lines");
+    if(all==null)return null;
+    for(int i=0;i<all.length();i++){
+      JSONObject current=all.optJSONObject(i);
+      if(current!=null&&lineId.equals(MobileStore.str(current,"id"))){
+        int neighbor=i+offset;
+        return neighbor>=0&&neighbor<all.length()?all.optJSONObject(neighbor):null;
+      }
+    }
+    return null;
+  }
+  private File contextAudio(JSONObject line){
+    if(line==null)return null;
+    String id=MobileStore.str(line,"id");
+    if(id.isEmpty())return null;
+    File[] takes=store.takes(pid(),id);
+    if(takes.length==0)return null;
+    for(File take:takes){
+      if(take.exists()&&store.isPreferred(pid(),id,take.getName()))return take;
+    }
+    for(int i=takes.length-1;i>=0;i--)if(takes[i].exists())return takes[i];
+    return null;
+  }
+  private Button contextPlayButton(JSONObject neighbor,boolean previous){
+    File audio=contextAudio(neighbor);
+    String direction=previous?"precedente":"successiva";
+    final Button[] holder=new Button[1];
+    Button button=iconButton(previous?"◀":"▶",YELLOW,()->{
+      if(recorder!=null){toast("Ferma la registrazione prima di ascoltare il contesto");return;}
+      if(recordingPending){toast("Conferma o scarta la take prima di ascoltare il contesto");return;}
+      File current=contextAudio(neighbor);
+      if(current==null){toast("Battuta "+direction+" non ancora registrata");return;}
+      playTake(current,holder[0]);
+    });
+    holder[0]=button;
+    button.setEnabled(audio!=null);
+    button.setAlpha(audio!=null?1f:0.30f);
+    button.setContentDescription(audio==null?"Battuta "+direction+" non registrata":"Ascolta battuta "+direction+" di "+MobileStore.characterName(neighbor,cast));
+    return button;
+  }
   private void showTakeDialog(JSONObject requestedLine){
     if(active==null||requestedLine==null)return;
     String requestedId=MobileStore.str(requestedLine,"id");
@@ -848,7 +891,7 @@ public final class MainActivity extends Activity {
       sentence.setGravity(Gravity.CENTER);
       LinearLayout.LayoutParams sentenceLp=new LinearLayout.LayoutParams(-1,-2);
       sentenceLp.setMargins(dp(3),dp(11),dp(3),dp(5));card.addView(sentence,sentenceLp);
-      final int diameter=Math.min(dp(292),getResources().getDisplayMetrics().widthPixels-dp(78));
+      final int diameter=Math.min(dp(242),getResources().getDisplayMetrics().widthPixels-dp(166));
       FrameLayout dial=new FrameLayout(this);
       RecorderDialView ring=new RecorderDialView(this);
       ring.state(complete,recorder!=null&&lid.equals(recordingLine),pending);
@@ -957,7 +1000,14 @@ public final class MainActivity extends Activity {
       dialContent.addView(extras);
       LinearLayout.LayoutParams dialLp=new LinearLayout.LayoutParams(diameter,diameter);
       dialLp.gravity=Gravity.CENTER;dialLp.setMargins(0,dp(9),0,dp(7));
-      card.addView(dial,dialLp);
+      // Side controls preview adjacent lines in the original script, not this character's filtered list.
+      LinearLayout contextRow=row();contextRow.setGravity(Gravity.CENTER);
+      Button previousPlay=contextPlayButton(adjacentScriptLine(lid,-1),true);
+      Button nextPlay=contextPlayButton(adjacentScriptLine(lid,1),false);
+      contextRow.addView(previousPlay,new LinearLayout.LayoutParams(dp(43),dp(51)));
+      contextRow.addView(dial,dialLp);
+      contextRow.addView(nextPlay,new LinearLayout.LayoutParams(dp(43),dp(51)));
+      card.addView(contextRow,new LinearLayout.LayoutParams(-1,-2));
       if(pending){
         TextView pendingLabel=label("TAKE DA CONFERMARE",12,YELLOW,true);
         pendingLabel.setGravity(Gravity.CENTER);card.addView(pendingLabel);
